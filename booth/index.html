@@ -864,8 +864,13 @@ function panel() {
     $(ids[i][1]).textContent = mm >= 4000 ? '∞' : mm + ' mm';
   }
 
-  $('unc').textContent = '±' + run.unc.toFixed(2) + ' m';
-  $('unc').style.color = C(run.unc > 0.6 ? '--truth' : run.unc > 0.3 ? '--mark' : '--fg');
+  if (mode === MODE.AUTO) {
+    $('unc').textContent = '—';
+    $('unc').style.color = C('--faint');
+  } else {
+    $('unc').textContent = '±' + run.unc.toFixed(2) + ' m';
+    $('unc').style.color = C(run.unc > 0.6 ? '--truth' : run.unc > 0.3 ? '--mark' : '--fg');
+  }
   $('dist').textContent = run.dist.toFixed(2) + ' m';
   $('clock').textContent = run.time.toFixed(1) + ' s';
   $('ticks').textContent = run.ticks + ' · ' + run.stalls;

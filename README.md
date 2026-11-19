@@ -25,13 +25,15 @@
 
 ---
 
-# 🕹️ 지금 바로 해보기 — 눈 감고 주차하기
+# 🕹️ 지금 바로 해보기 — 로봇 말만 믿고 주차하기
 
 **[▶ 브라우저에서 열기](https://dlwldn4824.github.io/robot-without-robot/booth/)** · 설치 없음 · 60초
 
-방향키로 로봇을 몰아 주차 칸에 넣는 게임입니다. 단, 화면에 보이는 로봇은 실제 위치가 아니라
-**로봇이 자기가 있다고 믿는 위치**입니다. 달릴수록 파란 원이 커지는데, 그게 로봇이 자기 위치를
-모르게 되는 정도입니다. 다 왔다 싶을 때 스페이스바를 누르면 진짜 위치가 나옵니다.
+이 로봇에는 바깥을 보는 눈이 없습니다. 바퀴가 몇 바퀴 돌았는지만 세서 "나 여기쯤 있을걸" 하고
+알려 줄 뿐입니다. 화면에 보이는 건 그 **로봇의 짐작**이고, 당신은 그 말만 믿고 주차해야 합니다.
+
+달릴수록 파란 원이 커집니다. 로봇이 자기 위치를 점점 자신 없어 한다는 뜻입니다. 주차했다 싶을 때
+스페이스바를 누르면 로봇이 진짜로 어디 있었는지 나옵니다.
 
 SLAM을 켜면 벽의 표식이 보일 때마다 원이 다시 줄어듭니다. 그 차이가 이 게임의 전부입니다.
 
@@ -197,7 +199,7 @@ ROS 2와 Simulation 환경에서 직접 구현합니다.
 ## 결과물
 
 * 🔗 Repository: [dlwldn4824/robot-without-robot](https://github.com/dlwldn4824/robot-without-robot)
-* 🌐 Robot Simulation Demo: [눈 감고 주차하기](https://dlwldn4824.github.io/robot-without-robot/booth/)
+* 🌐 Robot Simulation Demo: [로봇 말만 믿고 주차하기](https://dlwldn4824.github.io/robot-without-robot/booth/)
 * 📝 Beginner Guide / Blog: `TBA`
 * 🎥 Presentation: `TBA`
 

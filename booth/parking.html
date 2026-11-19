@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>눈 감고 주차하기</title>
+<title>로봇 말만 믿고 주차하기</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -202,6 +202,31 @@ ol#board li.me { color: var(--mark); }
 .note { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--dim); }
 .note b { color: var(--fg); }
 
+/* 깃허브 QR. 스캐너가 확실히 읽도록 흰 바탕에 어두운 모듈로 둔다. */
+.qrcard { background: #fff; border-radius: 9px; padding: 7px; line-height: 0; flex: none; }
+.qrcard .qr { display: block; width: 116px; height: 116px; }
+.qrcard.small .qr { width: 74px; height: 74px; }
+.qrrow { display: flex; gap: 12px; align-items: center; }
+.qrrow .note { margin: 0; }
+
+#starBox {                      /* 되감기를 가리지 않게 구석에 띄운다 */
+  position: absolute; right: 16px; bottom: 16px;
+  display: flex; align-items: center; gap: 14px; text-align: left;
+  background: rgba(20,27,37,.95); backdrop-filter: blur(7px);
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 11px 15px 11px 11px; max-width: 330px;
+}
+#starBox[hidden] { display: none !important; }
+.starwords { display: grid; gap: 3px; min-width: 0; }
+.starwords b { font-size: 16px; }
+.starwords span { font-size: 13px; color: var(--dim); }
+.starwords code {
+  font-family: var(--mono); font-size: 12px; color: var(--mark);
+  overflow-wrap: anywhere;
+}
+/* 좁으면 자리가 없다. 옆 패널 QR 이 남아 있으니 숨긴다. */
+@media (max-width: 760px) { #starBox { display: none !important; } }
+
 #touch { display: none; }
 @media (pointer: coarse) {
   #touch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
@@ -225,19 +250,28 @@ ol#board li.me { color: var(--mark); }
 
     <div id="overlay" class="attract">
       <p class="eyebrow" id="oEyebrow">firmware.c · wasm32 · 4.3 KB</p>
-      <h1 class="big" id="oTitle">눈 감고 주차하기</h1>
-      <p class="sub" id="oSub">화면 속 로봇은 <b style="color:var(--est)">로봇이 믿는 위치</b>입니다. 진짜 위치는 아무도 안 알려 줍니다.</p>
+      <h1 class="big" id="oTitle">로봇 말만 믿고 주차하기</h1>
+      <p class="sub" id="oSub">화면 속 로봇은 실제 위치가 아니라 <b style="color:var(--est)">로봇이 짐작한 자기 위치</b>입니다.</p>
 
       <ul class="rules" id="oRules">
-        <li><b>1</b><span>방향키로 몹니다. 파란 원은 로봇이 <b style="color:#93beff">이 안 어딘가 있겠지</b> 하고 짐작하는 범위입니다</span></li>
-        <li><b>2</b><span>달릴수록 원이 커집니다. 자기가 어디 있는지 점점 모르게 된다는 뜻입니다</span></li>
-        <li><b>3</b><span>주차 칸에 넣었다 싶으면 스페이스바. 그때 진짜 위치가 나옵니다</span></li>
+        <li><b>1</b><span>방향키로 몹니다. 파란 원은 로봇이 <b style="color:#93beff">나 이 안 어딘가 있을걸</b> 하고 내놓는 범위입니다</span></li>
+        <li><b>2</b><span>달릴수록 원이 커집니다. 로봇이 자기 위치를 점점 자신 없어 한다는 뜻입니다</span></li>
+        <li><b>3</b><span>주차했다 싶으면 스페이스바. 그때 로봇이 진짜로 어디 있었는지 나옵니다</span></li>
       </ul>
 
       <div id="errBox" hidden><span id="errNum">0.00</span><span id="errUnit">m</span></div>
       <p id="verdict" hidden></p>
       <p id="replayTag" hidden>replay · 실제로 이렇게 움직였습니다</p>
       <div class="btnrow" id="oButtons"></div>
+
+      <div id="starBox" hidden>
+        <div class="qrcard"><svg class="qr" viewBox="-2 -2 37 37" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GitHub 저장소 QR 코드"><rect x="-2" y="-2" width="37" height="37" fill="#fff"/><path d="M0 0h7v1h-7zM10 0h4v1h-4zM17 0h1v1h-1zM19 0h3v1h-3zM23 0h1v1h-1zM26 0h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM10 1h6v1h-6zM17 1h1v1h-1zM26 1h1v1h-1zM32 1h1v1h-1zM0 2h1v1h-1zM2 2h3v1h-3zM6 2h1v1h-1zM8 2h4v1h-4zM13 2h1v1h-1zM15 2h4v1h-4zM20 2h2v1h-2zM26 2h1v1h-1zM28 2h3v1h-3zM32 2h1v1h-1zM0 3h1v1h-1zM2 3h3v1h-3zM6 3h1v1h-1zM8 3h1v1h-1zM11 3h2v1h-2zM14 3h3v1h-3zM19 3h2v1h-2zM22 3h1v1h-1zM26 3h1v1h-1zM28 3h3v1h-3zM32 3h1v1h-1zM0 4h1v1h-1zM2 4h3v1h-3zM6 4h1v1h-1zM8 4h2v1h-2zM11 4h1v1h-1zM13 4h1v1h-1zM15 4h1v1h-1zM18 4h1v1h-1zM21 4h1v1h-1zM23 4h1v1h-1zM26 4h1v1h-1zM28 4h3v1h-3zM32 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM8 5h2v1h-2zM11 5h1v1h-1zM13 5h5v1h-5zM20 5h1v1h-1zM26 5h1v1h-1zM32 5h1v1h-1zM0 6h7v1h-7zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h1v1h-1zM24 6h1v1h-1zM26 6h7v1h-7zM8 7h3v1h-3zM14 7h2v1h-2zM21 7h1v1h-1zM0 8h1v1h-1zM2 8h5v1h-5zM9 8h3v1h-3zM13 8h5v1h-5zM23 8h1v1h-1zM26 8h5v1h-5zM0 9h2v1h-2zM5 9h1v1h-1zM7 9h1v1h-1zM11 9h2v1h-2zM14 9h1v1h-1zM18 9h3v1h-3zM23 9h1v1h-1zM26 9h2v1h-2zM29 9h2v1h-2zM32 9h1v1h-1zM0 10h2v1h-2zM3 10h4v1h-4zM8 10h1v1h-1zM10 10h2v1h-2zM15 10h1v1h-1zM18 10h1v1h-1zM22 10h1v1h-1zM24 10h2v1h-2zM28 10h1v1h-1zM30 10h2v1h-2zM0 11h1v1h-1zM3 11h1v1h-1zM5 11h1v1h-1zM7 11h2v1h-2zM14 11h1v1h-1zM20 11h3v1h-3zM24 11h1v1h-1zM28 11h3v1h-3zM32 11h1v1h-1zM1 12h4v1h-4zM6 12h2v1h-2zM10 12h2v1h-2zM15 12h1v1h-1zM18 12h1v1h-1zM22 12h4v1h-4zM28 12h2v1h-2zM2 13h1v1h-1zM4 13h1v1h-1zM8 13h4v1h-4zM14 13h4v1h-4zM20 13h1v1h-1zM23 13h2v1h-2zM26 13h1v1h-1zM29 13h1v1h-1zM31 13h2v1h-2zM0 14h1v1h-1zM2 14h1v1h-1zM5 14h2v1h-2zM8 14h2v1h-2zM11 14h1v1h-1zM14 14h1v1h-1zM19 14h1v1h-1zM22 14h1v1h-1zM24 14h3v1h-3zM29 14h1v1h-1zM31 14h1v1h-1zM0 15h1v1h-1zM2 15h1v1h-1zM9 15h2v1h-2zM13 15h1v1h-1zM16 15h1v1h-1zM18 15h4v1h-4zM25 15h6v1h-6zM3 16h6v1h-6zM10 16h1v1h-1zM12 16h2v1h-2zM16 16h2v1h-2zM19 16h1v1h-1zM22 16h1v1h-1zM24 16h2v1h-2zM27 16h3v1h-3zM32 16h1v1h-1zM4 17h2v1h-2zM9 17h1v1h-1zM12 17h1v1h-1zM14 17h1v1h-1zM17 17h5v1h-5zM23 17h1v1h-1zM26 17h2v1h-2zM29 17h2v1h-2zM32 17h1v1h-1zM2 18h1v1h-1zM6 18h1v1h-1zM10 18h1v1h-1zM13 18h1v1h-1zM15 18h1v1h-1zM17 18h1v1h-1zM20 18h1v1h-1zM24 18h1v1h-1zM26 18h3v1h-3zM30 18h2v1h-2zM0 19h1v1h-1zM2 19h3v1h-3zM9 19h2v1h-2zM12 19h1v1h-1zM14 19h2v1h-2zM17 19h5v1h-5zM27 19h6v1h-6zM0 20h3v1h-3zM4 20h3v1h-3zM8 20h2v1h-2zM13 20h2v1h-2zM16 20h1v1h-1zM19 20h1v1h-1zM22 20h1v1h-1zM25 20h1v1h-1zM27 20h3v1h-3zM31 20h2v1h-2zM0 21h1v1h-1zM9 21h1v1h-1zM13 21h1v1h-1zM15 21h1v1h-1zM18 21h1v1h-1zM21 21h1v1h-1zM23 21h1v1h-1zM26 21h1v1h-1zM29 21h2v1h-2zM32 21h1v1h-1zM0 22h1v1h-1zM3 22h2v1h-2zM6 22h1v1h-1zM8 22h2v1h-2zM11 22h1v1h-1zM15 22h2v1h-2zM25 22h1v1h-1zM28 22h1v1h-1zM30 22h2v1h-2zM0 23h1v1h-1zM3 23h1v1h-1zM7 23h1v1h-1zM9 23h1v1h-1zM11 23h1v1h-1zM13 23h3v1h-3zM18 23h1v1h-1zM21 23h2v1h-2zM25 23h2v1h-2zM30 23h2v1h-2zM0 24h1v1h-1zM2 24h1v1h-1zM6 24h2v1h-2zM9 24h2v1h-2zM15 24h3v1h-3zM22 24h1v1h-1zM24 24h5v1h-5zM8 25h3v1h-3zM12 25h2v1h-2zM18 25h2v1h-2zM23 25h2v1h-2zM28 25h1v1h-1zM30 25h1v1h-1zM32 25h1v1h-1zM0 26h7v1h-7zM11 26h2v1h-2zM14 26h2v1h-2zM18 26h1v1h-1zM20 26h1v1h-1zM22 26h3v1h-3zM26 26h1v1h-1zM28 26h1v1h-1zM30 26h2v1h-2zM0 27h1v1h-1zM6 27h1v1h-1zM8 27h1v1h-1zM11 27h2v1h-2zM14 27h3v1h-3zM20 27h5v1h-5zM28 27h3v1h-3zM32 27h1v1h-1zM0 28h1v1h-1zM2 28h3v1h-3zM6 28h1v1h-1zM8 28h5v1h-5zM14 28h2v1h-2zM18 28h2v1h-2zM22 28h1v1h-1zM24 28h6v1h-6zM0 29h1v1h-1zM2 29h3v1h-3zM6 29h1v1h-1zM8 29h2v1h-2zM11 29h1v1h-1zM15 29h3v1h-3zM22 29h4v1h-4zM28 29h2v1h-2zM31 29h2v1h-2zM0 30h1v1h-1zM2 30h3v1h-3zM6 30h1v1h-1zM8 30h1v1h-1zM11 30h1v1h-1zM17 30h1v1h-1zM22 30h1v1h-1zM26 30h2v1h-2zM29 30h2v1h-2zM0 31h1v1h-1zM6 31h1v1h-1zM13 31h1v1h-1zM16 31h1v1h-1zM18 31h1v1h-1zM20 31h4v1h-4zM25 31h2v1h-2zM28 31h3v1h-3zM0 32h7v1h-7zM8 32h3v1h-3zM12 32h2v1h-2zM16 32h3v1h-3zM22 32h6v1h-6zM29 32h1v1h-1zM31 32h1v1h-1z" fill="#0b0f16"/></svg></div>
+        <div class="starwords">
+          <b>재밌었으면 ⭐ 한 번</b>
+          <span>이 게임과 스터디 코드 전부 공개되어 있습니다</span>
+          <code>github.com/dlwldn4824/robot-without-robot</code>
+        </div>
+      </div>
       <p class="blink" id="oHint">아무 키나 누르면 시작합니다</p>
     </div>
   </div>
@@ -289,6 +323,14 @@ ol#board li.me { color: var(--mark); }
       <h2>무슨 이야기냐면</h2>
       <p class="note">바퀴가 몇 바퀴 돌았는지만 세서 위치를 아는 것이 Odometry입니다. 오차가 지워지지 않고 쌓이기만 해서 50 m를 달리면 <b>5.54 m</b>까지 틀어집니다. 밖을 보고 다시 맞추면 <b>0.70 m</b>가 됩니다.</p>
       <p class="note" style="margin-top:8px">이 화면의 바퀴 명령과 센서 변환은 MCU에 올리는 <b>firmware.c</b>를 wasm으로 컴파일해 그대로 부르고 있습니다. SLAM 보정만 흉내입니다.</p>
+    </div>
+
+    <div class="card" id="repoCard">
+      <h2>코드 보기 · ⭐</h2>
+      <div class="qrrow">
+        <div class="qrcard small"><svg class="qr" viewBox="-2 -2 37 37" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GitHub 저장소 QR 코드"><rect x="-2" y="-2" width="37" height="37" fill="#fff"/><path d="M0 0h7v1h-7zM10 0h4v1h-4zM17 0h1v1h-1zM19 0h3v1h-3zM23 0h1v1h-1zM26 0h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM10 1h6v1h-6zM17 1h1v1h-1zM26 1h1v1h-1zM32 1h1v1h-1zM0 2h1v1h-1zM2 2h3v1h-3zM6 2h1v1h-1zM8 2h4v1h-4zM13 2h1v1h-1zM15 2h4v1h-4zM20 2h2v1h-2zM26 2h1v1h-1zM28 2h3v1h-3zM32 2h1v1h-1zM0 3h1v1h-1zM2 3h3v1h-3zM6 3h1v1h-1zM8 3h1v1h-1zM11 3h2v1h-2zM14 3h3v1h-3zM19 3h2v1h-2zM22 3h1v1h-1zM26 3h1v1h-1zM28 3h3v1h-3zM32 3h1v1h-1zM0 4h1v1h-1zM2 4h3v1h-3zM6 4h1v1h-1zM8 4h2v1h-2zM11 4h1v1h-1zM13 4h1v1h-1zM15 4h1v1h-1zM18 4h1v1h-1zM21 4h1v1h-1zM23 4h1v1h-1zM26 4h1v1h-1zM28 4h3v1h-3zM32 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM8 5h2v1h-2zM11 5h1v1h-1zM13 5h5v1h-5zM20 5h1v1h-1zM26 5h1v1h-1zM32 5h1v1h-1zM0 6h7v1h-7zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h1v1h-1zM24 6h1v1h-1zM26 6h7v1h-7zM8 7h3v1h-3zM14 7h2v1h-2zM21 7h1v1h-1zM0 8h1v1h-1zM2 8h5v1h-5zM9 8h3v1h-3zM13 8h5v1h-5zM23 8h1v1h-1zM26 8h5v1h-5zM0 9h2v1h-2zM5 9h1v1h-1zM7 9h1v1h-1zM11 9h2v1h-2zM14 9h1v1h-1zM18 9h3v1h-3zM23 9h1v1h-1zM26 9h2v1h-2zM29 9h2v1h-2zM32 9h1v1h-1zM0 10h2v1h-2zM3 10h4v1h-4zM8 10h1v1h-1zM10 10h2v1h-2zM15 10h1v1h-1zM18 10h1v1h-1zM22 10h1v1h-1zM24 10h2v1h-2zM28 10h1v1h-1zM30 10h2v1h-2zM0 11h1v1h-1zM3 11h1v1h-1zM5 11h1v1h-1zM7 11h2v1h-2zM14 11h1v1h-1zM20 11h3v1h-3zM24 11h1v1h-1zM28 11h3v1h-3zM32 11h1v1h-1zM1 12h4v1h-4zM6 12h2v1h-2zM10 12h2v1h-2zM15 12h1v1h-1zM18 12h1v1h-1zM22 12h4v1h-4zM28 12h2v1h-2zM2 13h1v1h-1zM4 13h1v1h-1zM8 13h4v1h-4zM14 13h4v1h-4zM20 13h1v1h-1zM23 13h2v1h-2zM26 13h1v1h-1zM29 13h1v1h-1zM31 13h2v1h-2zM0 14h1v1h-1zM2 14h1v1h-1zM5 14h2v1h-2zM8 14h2v1h-2zM11 14h1v1h-1zM14 14h1v1h-1zM19 14h1v1h-1zM22 14h1v1h-1zM24 14h3v1h-3zM29 14h1v1h-1zM31 14h1v1h-1zM0 15h1v1h-1zM2 15h1v1h-1zM9 15h2v1h-2zM13 15h1v1h-1zM16 15h1v1h-1zM18 15h4v1h-4zM25 15h6v1h-6zM3 16h6v1h-6zM10 16h1v1h-1zM12 16h2v1h-2zM16 16h2v1h-2zM19 16h1v1h-1zM22 16h1v1h-1zM24 16h2v1h-2zM27 16h3v1h-3zM32 16h1v1h-1zM4 17h2v1h-2zM9 17h1v1h-1zM12 17h1v1h-1zM14 17h1v1h-1zM17 17h5v1h-5zM23 17h1v1h-1zM26 17h2v1h-2zM29 17h2v1h-2zM32 17h1v1h-1zM2 18h1v1h-1zM6 18h1v1h-1zM10 18h1v1h-1zM13 18h1v1h-1zM15 18h1v1h-1zM17 18h1v1h-1zM20 18h1v1h-1zM24 18h1v1h-1zM26 18h3v1h-3zM30 18h2v1h-2zM0 19h1v1h-1zM2 19h3v1h-3zM9 19h2v1h-2zM12 19h1v1h-1zM14 19h2v1h-2zM17 19h5v1h-5zM27 19h6v1h-6zM0 20h3v1h-3zM4 20h3v1h-3zM8 20h2v1h-2zM13 20h2v1h-2zM16 20h1v1h-1zM19 20h1v1h-1zM22 20h1v1h-1zM25 20h1v1h-1zM27 20h3v1h-3zM31 20h2v1h-2zM0 21h1v1h-1zM9 21h1v1h-1zM13 21h1v1h-1zM15 21h1v1h-1zM18 21h1v1h-1zM21 21h1v1h-1zM23 21h1v1h-1zM26 21h1v1h-1zM29 21h2v1h-2zM32 21h1v1h-1zM0 22h1v1h-1zM3 22h2v1h-2zM6 22h1v1h-1zM8 22h2v1h-2zM11 22h1v1h-1zM15 22h2v1h-2zM25 22h1v1h-1zM28 22h1v1h-1zM30 22h2v1h-2zM0 23h1v1h-1zM3 23h1v1h-1zM7 23h1v1h-1zM9 23h1v1h-1zM11 23h1v1h-1zM13 23h3v1h-3zM18 23h1v1h-1zM21 23h2v1h-2zM25 23h2v1h-2zM30 23h2v1h-2zM0 24h1v1h-1zM2 24h1v1h-1zM6 24h2v1h-2zM9 24h2v1h-2zM15 24h3v1h-3zM22 24h1v1h-1zM24 24h5v1h-5zM8 25h3v1h-3zM12 25h2v1h-2zM18 25h2v1h-2zM23 25h2v1h-2zM28 25h1v1h-1zM30 25h1v1h-1zM32 25h1v1h-1zM0 26h7v1h-7zM11 26h2v1h-2zM14 26h2v1h-2zM18 26h1v1h-1zM20 26h1v1h-1zM22 26h3v1h-3zM26 26h1v1h-1zM28 26h1v1h-1zM30 26h2v1h-2zM0 27h1v1h-1zM6 27h1v1h-1zM8 27h1v1h-1zM11 27h2v1h-2zM14 27h3v1h-3zM20 27h5v1h-5zM28 27h3v1h-3zM32 27h1v1h-1zM0 28h1v1h-1zM2 28h3v1h-3zM6 28h1v1h-1zM8 28h5v1h-5zM14 28h2v1h-2zM18 28h2v1h-2zM22 28h1v1h-1zM24 28h6v1h-6zM0 29h1v1h-1zM2 29h3v1h-3zM6 29h1v1h-1zM8 29h2v1h-2zM11 29h1v1h-1zM15 29h3v1h-3zM22 29h4v1h-4zM28 29h2v1h-2zM31 29h2v1h-2zM0 30h1v1h-1zM2 30h3v1h-3zM6 30h1v1h-1zM8 30h1v1h-1zM11 30h1v1h-1zM17 30h1v1h-1zM22 30h1v1h-1zM26 30h2v1h-2zM29 30h2v1h-2zM0 31h1v1h-1zM6 31h1v1h-1zM13 31h1v1h-1zM16 31h1v1h-1zM18 31h1v1h-1zM20 31h4v1h-4zM25 31h2v1h-2zM28 31h3v1h-3zM0 32h7v1h-7zM8 32h3v1h-3zM12 32h2v1h-2zM16 32h3v1h-3zM22 32h6v1h-6zM29 32h1v1h-1zM31 32h1v1h-1z" fill="#0b0f16"/></svg></div>
+        <p class="note">게임도 스터디도 전부 공개입니다.<br><b>robot-without-robot</b></p>
+      </div>
     </div>
 
     <div id="touch">
@@ -855,11 +897,11 @@ function showTitle() {
   run = newRun();
   if (FW) FW.fw_i_setup(SLOT_AUTO);
   ov.hidden = false; ov.classList.add('attract'); ov.classList.remove('result');
-  $('hud').hidden = true; $('replayTag').hidden = true; hideTip();
+  $('hud').hidden = true; $('replayTag').hidden = true; $('starBox').hidden = true; hideTip();
   $('oEyebrow').hidden = false;
   $('oEyebrow').textContent = FW ? 'firmware.c · wasm32 · 4.3 KB · live' : 'firmware.c · wasm load failed · js fallback';
-  $('oTitle').textContent = '눈 감고 주차하기';
-  $('oSub').innerHTML = '눈 감고 걸어서 주차 칸에 서 보는 게임입니다. 로봇도 밖을 안 보면 똑같이 됩니다.<br><span style="color:var(--faint)">지금 혼자 도는 로봇은 MCU용 C 펌웨어가 몰고 있습니다.</span>';
+  $('oTitle').textContent = '로봇 말만 믿고 주차하기';
+  $('oSub').innerHTML = '이 로봇에는 바깥을 보는 눈이 없습니다. 바퀴가 몇 바퀴 돌았는지만 세서 "나 여기쯤 있을걸" 하고 알려 줄 뿐입니다.<br>화면에 보이는 건 그 <b style="color:var(--est)">로봇의 짐작</b>이고, 당신은 그 말만 믿고 주차해야 합니다.<br><span style="color:var(--faint)">지금 혼자 도는 로봇은 MCU용 C 펌웨어가 몰고 있습니다.</span>';
   $('oRules').hidden = false;
   $('errBox').hidden = true; $('verdict').hidden = true;
   $('oButtons').innerHTML = '';
@@ -874,7 +916,7 @@ function startPlay(useSlam) {
   phase = PHASE.PLAY;
   myLast = null; renderBoard();
   ov.hidden = true; ov.classList.remove('attract', 'result');
-  $('hud').hidden = false; $('replayTag').hidden = true; hideTip();
+  $('hud').hidden = false; $('replayTag').hidden = true; $('starBox').hidden = true; hideTip();
   lastInput = performance.now();
   $('boardTitle').textContent = useSlam ? '기록 · SLAM 보정' : '기록 · 보정 없음';
 }
@@ -891,6 +933,7 @@ function finish() {
   $('hud').hidden = true; hideTip();
   $('oEyebrow').hidden = true;
   $('replayTag').hidden = false;
+  $('starBox').hidden = false;
   run.rep = 0; run.repHold = 0;
   $('oRules').hidden = true; $('oHint').hidden = true;
   $('errBox').hidden = false; $('verdict').hidden = false;
@@ -907,10 +950,10 @@ function finish() {
   } else {
     const bay = GOAL.x1 - GOAL.x0;                      // 주차 칸 폭 = 눈대중 기준
     const times = (err / bay).toFixed(1);
-    $('oTitle').textContent = mode === MODE.SLAM ? '밖을 보면서 달렸을 때' : '파란 원은 거짓말이었습니다';
+    $('oTitle').textContent = mode === MODE.SLAM ? '밖을 보면서 달렸을 때' : '로봇 말이 이만큼 틀렸습니다';
     $('oSub').innerHTML = mode === MODE.SLAM
-      ? '랜드마크가 보일 때마다 원이 다시 작아졌습니다. 그래서 끝까지 안 헤맵니다.'
-      : '로봇은 <b style="color:var(--est)">파란 쪽</b>에 있다고 믿었고, 실제로는 <b style="color:var(--truth)">빨간 쪽</b>에 있었습니다.';
+      ? '표식이 보일 때마다 원이 다시 작아졌습니다. 그래서 끝까지 헤매지 않습니다.'
+      : '로봇은 <b style="color:var(--est)">파란 쪽</b>에 있다고 했는데, 실제로는 <b style="color:var(--truth)">빨간 쪽</b>에 있었습니다.';
     $('verdict').innerHTML = parked
       ? '주차 성공'
       : '주차 칸 폭의 <b>' + times + '배</b>만큼 벗어났습니다';

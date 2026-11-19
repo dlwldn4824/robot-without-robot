@@ -13,7 +13,7 @@ HERE = pathlib.Path(__file__).parent
 src = (HERE / 'parking.html').read_text(encoding='utf-8')
 
 title = re.search(r'<title>(.*?)</title>', src, re.S)
-title = title.group(1).strip() if title else '눈 감고 주차하기'
+title = title.group(1).strip() if title else '로봇 말만 믿고 주차하기'
 
 # 조각은 <meta>·<title>·<link>·<style> 다음에 마크업, 그 다음 <script> 순서다.
 # 스크립트가 마크업보다 먼저 돌면 getElementById 가 null 이 되므로 그 순서를 지켜 나눈다.
@@ -25,7 +25,7 @@ out = f"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="바퀴만 세는 로봇이 자기 위치를 얼마나 모르게 되는지 60초 만에 보여 주는 부스용 게임">
+<meta name="description" content="바깥을 못 보는 로봇이 제 위치를 얼마나 모르게 되는지 60초 만에 보여 주는 부스용 게임">
 <style>
   :root {{ color-scheme: dark; }}
   html, body {{ margin: 0; }}

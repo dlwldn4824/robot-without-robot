@@ -1,0 +1,33 @@
+<mujoco model="fw_arena_white">
+  <compiler angle="degree" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast"/>
+  <visual>
+    <global offwidth="1920" offheight="1440"/>
+    <quality shadowsize="2048"/>
+    <headlight diffuse="0.80 0.80 0.82" ambient="0.52 0.53 0.56" specular="0.1 0.1 0.1"/>
+    <rgba haze="1 1 1 1"/>
+  </visual>
+  <asset>
+    <texture name="sky" type="skybox" builtin="flat" rgb1="1 1 1" rgb2="1 1 1" width="64" height="64"/>
+    <material name="floor" rgba="0.985 0.988 1.0 1" reflectance="0.05"/>
+    <material name="wall"  rgba="0.88 0.90 0.94 1"/>
+    <material name="obs"   rgba="0.13 0.42 0.92 1"/>
+    <material name="goal"  rgba="0.20 0.58 1.0 0.55"/>
+  </asset>
+  <worldbody>
+    <light pos="0 0 6" dir="0 0 -1" diffuse="0.55 0.55 0.57" castshadow="true"/>
+    <light pos="2.5 2.5 4" dir="-0.5 -0.5 -1" diffuse="0.22 0.22 0.24"/>
+    <geom name="floor" type="plane" size="5 5 0.1" material="floor" friction="1.1 0.005 0.0001"/>
+    <geom name="wall_n" type="box" pos=" 0  3.0 0.18" size="3.1 0.08 0.18" material="wall"/>
+    <geom name="wall_s" type="box" pos=" 0 -3.0 0.18" size="3.1 0.08 0.18" material="wall"/>
+    <geom name="wall_e" type="box" pos=" 3.0 0   0.18" size="0.08 3.1 0.18" material="wall"/>
+    <geom name="wall_w" type="box" pos="-3.0 0   0.18" size="0.08 3.1 0.18" material="wall"/>
+    <geom name="obs1" type="cylinder" pos=" 0.9  0.7 0.22" size="0.22 0.22" material="obs"/>
+    <geom name="obs2" type="cylinder" pos="-1.0  1.5 0.22" size="0.20 0.22" material="obs"/>
+    <geom name="obs3" type="cylinder" pos=" 0.1 -1.5 0.22" size="0.24 0.22" material="obs"/>
+    <geom name="obs4" type="box"      pos="-1.7 -0.4 0.20" size="0.07 0.70 0.20" material="wall"/>
+    <geom name="obs5" type="box"      pos=" 1.6  1.8 0.20" size="0.70 0.07 0.20" material="wall"/>
+    <geom name="GOAL" type="cylinder" pos="2.2 -1.9 0.16" size="0.34 0.16" material="goal"/>
+  </worldbody>
+  <include file="car.xml"/>
+</mujoco>

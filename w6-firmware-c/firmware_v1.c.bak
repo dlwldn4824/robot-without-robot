@@ -1,0 +1,186 @@
+/* firmware.c — MCU 에 그대로 올라가는 코드.
+ *
+ *   규칙:  malloc 없음 · float 없음 · 표준 라이브러리 호출 없음
+ *          상태는 전부 static (링커가 .bss 에 둔다)
+ *          입력은 ADC 카운트, 출력은 PWM 듀티 + 방향 핀
+ *
+ *   호스트에서는 clang 으로 .dylib 을 만들어 시뮬레이터가 호출하고,
+ *   보드에서는 같은 파일을 arm-none-eabi-gcc 로 그대로 빌드한다.
+ */
+#include <stdint.h>
+
+/* ── 상수 (전부 정수) ───────────────────────────────── */
+#define TICK_MS       20u
+#define IR_K       211000
+#define IR_C          111
+#define PWM_MAX       255
+#define STOP_MM       480
+#define CLEAR_MM      700
+#define SIDE_MM       380
+#define TURN_HOLD_MS  360u
+#define ARRIVE_ADC    760
+#define STALL_TICKS     3
+#define STALL_MS      500u
+#define BACK_MS       500u
+#define SPIN_MS       550u
+#define CRUISE_PWM    210
+#define SLOW_PWM      110
+#define TURN_PWM      150
+#define STEER_GAIN     95
+
+enum { ST_BOOT, ST_CRUISE, ST_SLOW, ST_AVOID_L, ST_AVOID_R,
+       ST_ESCAPE, ST_ARRIVED, ST_BACKUP, ST_SPIN };
+
+typedef struct {
+    int16_t l_duty, r_duty;   /* 0 ~ 255           */
+    int8_t  l_dir,  r_dir;    /* +1 정방향 / -1 역방향 */
+    uint8_t state;
+} fw_out_t;
+
+/* ── 상태 (static = 정적 할당) ───────────────────────── */
+static int32_t  s_l_mm, s_f_mm, s_r_mm;
+static uint8_t  s_state;
+static uint8_t  s_blocked;
+static uint8_t  s_turn_dir;        /* ST_AVOID_L / ST_AVOID_R */
+static uint32_t s_turn_until;
+static uint32_t s_stall_ms;
+static uint32_t s_rec_until, s_spin_until;
+static uint32_t s_ticks;
+static uint16_t s_stalls;
+static uint8_t  s_last_state;
+static uint16_t s_state_changes;
+
+/* ── 보조 함수 ──────────────────────────────────────── */
+static int32_t clamp32(int32_t v, int32_t lo, int32_t hi)
+{
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/* ADC 카운트 -> mm. 정수 나눗셈만 쓴다. */
+static int32_t adc_to_mm(uint16_t adc)
+{
+    if (adc == 0u) return 4000;
+    return clamp32((int32_t)(IR_K / (int32_t)adc) - IR_C, 0, 4000);
+}
+
+static fw_out_t mk(int8_t ld, int16_t lp, int8_t rd, int16_t rp)
+{
+    fw_out_t o;
+    o.l_dir = ld; o.l_duty = lp;
+    o.r_dir = rd; o.r_duty = rp;
+    if (s_state != s_last_state) { s_state_changes++; s_last_state = s_state; }
+    o.state = s_state;
+    return o;
+}
+
+/* ── API ────────────────────────────────────────────── */
+void fw_setup(void)
+{
+    s_l_mm = s_f_mm = s_r_mm = 4000;
+    s_state = ST_BOOT; s_last_state = ST_BOOT;
+    s_blocked = 0u; s_turn_dir = 0u;
+    s_turn_until = 0u; s_stall_ms = 0u;
+    s_rec_until = 0u; s_spin_until = 0u;
+    s_ticks = 0u; s_stalls = 0u; s_state_changes = 0u;
+}
+
+fw_out_t fw_loop(uint32_t t_ms,
+                 uint16_t adc_l, uint16_t adc_f, uint16_t adc_r,
+                 uint16_t bea_l, uint16_t bea_r,
+                 int32_t  enc_moved)
+{
+    s_ticks++;
+
+    /* ① ADC -> mm, 1차 저역통과.  (3*old + new)/4 를 시프트로 */
+    s_l_mm += (adc_to_mm(adc_l) - s_l_mm) >> 2;
+    s_f_mm += (adc_to_mm(adc_f) - s_f_mm) >> 2;
+    s_r_mm += (adc_to_mm(adc_r) - s_r_mm) >> 2;
+
+    /* ② 복구 동작 중이면 그것부터 끝낸다 */
+    if (t_ms < s_rec_until) {
+        if (t_ms < s_spin_until) { s_state = ST_BACKUP; return mk(-1, SLOW_PWM, -1, SLOW_PWM); }
+        s_state = ST_SPIN;       return mk(-1, TURN_PWM,  1, TURN_PWM);
+    }
+
+    /* ③ 스톨 감지: 돌리라고 했는데 엔코더가 안 변한다 */
+    if (s_state != ST_BOOT && s_state != ST_ARRIVED && enc_moved <= STALL_TICKS) {
+        s_stall_ms += TICK_MS;
+        if (s_stall_ms >= STALL_MS) {
+            s_stalls++; s_stall_ms = 0u;
+            s_spin_until = t_ms + BACK_MS;
+            s_rec_until  = t_ms + BACK_MS + SPIN_MS;
+            s_state = ST_BACKUP;
+            return mk(-1, SLOW_PWM, -1, SLOW_PWM);
+        }
+    } else {
+        s_stall_ms = 0u;
+    }
+
+    /* ④ 도착 판정 */
+    if (bea_l > ARRIVE_ADC || bea_r > ARRIVE_ADC) {
+        s_state = ST_ARRIVED; return mk(1, 0, 1, 0);
+    }
+
+    /* ⑤ 회전 커밋 */
+    if (s_turn_dir != 0u && t_ms < s_turn_until) {
+        s_state = s_turn_dir;
+        return (s_turn_dir == ST_AVOID_L) ? mk(-1, TURN_PWM, 1, TURN_PWM)
+                                          : mk( 1, TURN_PWM,-1, TURN_PWM);
+    }
+    s_turn_dir = 0u;
+
+    /* ⑥ 히스테리시스 */
+    if (s_blocked) { if (s_f_mm > CLEAR_MM) s_blocked = 0u; }
+    else           { if (s_f_mm < STOP_MM)  s_blocked = 1u; }
+
+    if (s_blocked) {
+        if (s_l_mm < SIDE_MM && s_r_mm < SIDE_MM) {
+            s_turn_dir = ST_AVOID_L; s_turn_until = t_ms + TURN_HOLD_MS * 2u;
+            s_state = ST_ESCAPE;     return mk(-1, TURN_PWM, 1, TURN_PWM);
+        }
+        s_turn_until = t_ms + TURN_HOLD_MS;
+        s_turn_dir = (s_l_mm > s_r_mm) ? ST_AVOID_L : ST_AVOID_R;
+        s_state = s_turn_dir;
+        return (s_turn_dir == ST_AVOID_L) ? mk(-1, TURN_PWM, 1, TURN_PWM)
+                                          : mk( 1, TURN_PWM,-1, TURN_PWM);
+    }
+
+    /* ⑦ 측면 여유 */
+    if (s_r_mm < SIDE_MM && s_r_mm < s_l_mm) { s_state = ST_SLOW; return mk(1, SLOW_PWM/2, 1, SLOW_PWM); }
+    if (s_l_mm < SIDE_MM && s_l_mm < s_r_mm) { s_state = ST_SLOW; return mk(1, SLOW_PWM, 1, SLOW_PWM/2); }
+
+    /* ⑧ 비컨 조향 — 정규화 차분 (거리가 멀어도 세기가 유지된다) */
+    {
+        int32_t base  = (s_f_mm > CLEAR_MM) ? CRUISE_PWM : SLOW_PWM;
+        int32_t steer = ((int32_t)bea_l - (int32_t)bea_r) * STEER_GAIN
+                        / ((int32_t)bea_l + (int32_t)bea_r + 1);
+        s_state = (s_f_mm > CLEAR_MM) ? ST_CRUISE : ST_SLOW;
+        return mk(1, (int16_t)clamp32(base - steer, 0, PWM_MAX),
+                  1, (int16_t)clamp32(base + steer, 0, PWM_MAX));
+    }
+}
+
+/* 텔레메트리 (호스트에서 읽어 본다) */
+int32_t  fw_get_mm(int i)      { return i == 0 ? s_l_mm : (i == 1 ? s_f_mm : s_r_mm); }
+uint16_t fw_get_stalls(void)   { return s_stalls; }
+uint32_t fw_get_ticks(void)    { return s_ticks; }
+uint16_t fw_get_changes(void)  { return s_state_changes; }
+
+/* ── WebAssembly / 단순 ABI용 진입점 ─────────────────────
+ * wasm 은 구조체 반환이 숨은 포인터 인자로 바뀌어 호출이 번거롭다.
+ * 결과를 static 에 담고 접근자로 꺼내는 방식을 하나 더 둔다.
+ * (호스트의 ctypes 는 계속 fw_loop 를 쓴다 — 같은 로직, 같은 파일)
+ */
+static fw_out_t s_last_out;
+
+void fw_tick(uint32_t t_ms,
+             uint16_t adc_l, uint16_t adc_f, uint16_t adc_r,
+             uint16_t bea_l, uint16_t bea_r,
+             int32_t  enc_moved)
+{
+    s_last_out = fw_loop(t_ms, adc_l, adc_f, adc_r, bea_l, bea_r, enc_moved);
+}
+
+int32_t fw_out_l(void)     { return (int32_t)s_last_out.l_dir * s_last_out.l_duty; }
+int32_t fw_out_r(void)     { return (int32_t)s_last_out.r_dir * s_last_out.r_duty; }
+int32_t fw_out_state(void) { return (int32_t)s_last_out.state; }

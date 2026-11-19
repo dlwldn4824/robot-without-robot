@@ -25,6 +25,24 @@
 
 ---
 
+# 🕹️ 지금 바로 해보기 — 눈 감고 주차하기
+
+**[▶ 브라우저에서 열기](https://dlwldn4824.github.io/robot-without-robot/booth/)** · 설치 없음 · 60초
+
+방향키로 로봇을 몰아 주차 칸에 넣는 게임입니다. 단, 화면에 보이는 로봇은 실제 위치가 아니라
+**로봇이 자기가 있다고 믿는 위치**입니다. 달릴수록 파란 원이 커지는데, 그게 로봇이 자기 위치를
+모르게 되는 정도입니다. 다 왔다 싶을 때 스페이스바를 누르면 진짜 위치가 나옵니다.
+
+SLAM을 켜면 벽의 표식이 보일 때마다 원이 다시 줄어듭니다. 그 차이가 이 게임의 전부입니다.
+
+바퀴 명령과 센서 변환은 설명용으로 새로 짠 코드가 아니라, MCU에 올리는
+[`w6-firmware-c/firmware.c`](w6-firmware-c/firmware.c)를 wasm으로 컴파일해 그대로 부르고 있습니다.
+4.3 KB, 정수 연산만 쓰고, 외부 의존성이 없습니다.
+
+> 2026 AWS Community Day Seoul 가짜연구소 부스에서 쓰려고 만들었습니다. 코드는 [`booth/`](booth/)에 있습니다.
+
+---
+
 # ✨ Why this project?
 
 ## 로봇 한번 해보고 싶은데, 뭐부터 해야 하지?
@@ -178,8 +196,8 @@ ROS 2와 Simulation 환경에서 직접 구현합니다.
 
 ## 결과물
 
-* 🔗 Repository: `TBA`
-* 🌐 Robot Simulation Demo: `TBA`
+* 🔗 Repository: [dlwldn4824/robot-without-robot](https://github.com/dlwldn4824/robot-without-robot)
+* 🌐 Robot Simulation Demo: [눈 감고 주차하기](https://dlwldn4824.github.io/robot-without-robot/booth/)
 * 📝 Beginner Guide / Blog: `TBA`
 * 🎥 Presentation: `TBA`
 
@@ -192,8 +210,8 @@ ROS 2와 Simulation 환경에서 직접 구현합니다.
 | W03 | `TBA` | `TBA` | `TBA` |
 | W04 | `TBA` | `TBA` | `TBA` |
 | W05 | `TBA` | `TBA` | `TBA` |
-| W06 | `TBA` | `TBA` | `TBA` |
-| W07 | `TBA` | `TBA` | `TBA` |
+| W06 | [Sensor + Control](w6/W6-sensor-control.md) | [`w6/`](w6/) · [`w6-embedded/`](w6-embedded/) · [`w6-firmware-c/`](w6-firmware-c/) | [스터디 로그](studylog/) |
+| W07 | [SLAM](studylog-w7/) | [`w7/`](w7/) | [스터디 로그](studylog-w7/) |
 | W08 | `TBA` | `TBA` | `TBA` |
 | W09 | `TBA` | `TBA` | `TBA` |
 | W10 | `TBA` | `TBA` | `TBA` |
@@ -202,20 +220,39 @@ ROS 2와 Simulation 환경에서 직접 구현합니다.
 | W13 | `TBA` | `TBA` | `TBA` |
 | W14 | `TBA` | `TBA` | `TBA` |
 
-## 예정 구조
+## 폴더 구조
 
 ```text
 /
-├── README.md
-├── docs/
-│   ├── week01/
-│   ├── week02/
-│   └── ...
-├── challenges/
-│   ├── challenge01/
-│   └── ...
-├── projects/
-└── resources/
+├── booth/              AWS Community Day 부스용 게임 (단독 실행 index.html)
+├── w6/                 W6 Sensor + Control — MuJoCo 장애물 회피
+├── w6-embedded/        같은 제어기를 MCU 시뮬레이터 위에 올린 것
+├── w6-firmware-c/      C 펌웨어 (dylib · wasm · 보드용, 한 파일에서 세 갈래)
+├── w7/                 W7 SLAM — LiDAR 격자 지도, EKF-SLAM, 다중 지점 매핑
+├── studylog/           W6 스터디 로그 (HTML)
+└── studylog-w7/        W7 스터디 로그 (HTML)
+```
+
+PythonRobotics 예제를 불러다 쓰는 코드가 있습니다. 저장소에는 담지 않았으니 옆에 따로 받아 두세요.
+
+```bash
+git clone https://github.com/AtsushiSakai/PythonRobotics.git
+```
+
+## 돌려보기
+
+```bash
+# W6 — 명세대로 만든 컨트롤러는 40초에 61번 부딪히고, 고친 쪽은 0번입니다
+cd w6 && pip install mujoco imageio
+python run.py --duration 40
+python run.py --controller improved --duration 40
+
+# W7 — 같은 주행에서 바퀴만 쓰면 5.54 m, 관측을 더하면 0.70 m 틀어집니다
+cd ../w7 && python ekf_run.py
+python temi_map.py        # 돌아다니며 지도를 쌓을 때와 위치가 틀어졌을 때
+
+# 부스 게임 — 서버도 인터넷도 필요 없습니다
+open ../booth/index.html
 ```
 
 ---

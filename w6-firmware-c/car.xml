@@ -1,0 +1,37 @@
+<mujocoinclude>
+  <default>
+    <default class="wheel">
+      <geom type="cylinder" size="0.045 0.022" zaxis="0 1 0" mass="0.25"
+            rgba="0.16 0.19 0.24 1" friction="2.2 0.02 0.002"/>
+      <joint type="hinge" axis="0 1 0" damping="0.004"/>
+    </default>
+  </default>
+  <worldbody>
+    <body name="chassis" pos="0 0 0.055">
+      <freejoint name="root"/>
+      <geom name="body" type="box" size="0.15 0.085 0.025" rgba="0.13 0.42 0.92 1" mass="1.6"/>
+      <geom name="hood" type="box" size="0.05 0.06 0.016" pos="0.10 0 0.035" rgba="0.10 0.34 0.78 1" mass="0.1"/>
+      <geom name="wing" type="box" size="0.022 0.085 0.008" pos="-0.155 0 0.062" rgba="0.97 0.97 0.99 1" mass="0.05"/>
+      <geom name="wingL" type="box" size="0.012 0.006 0.028" pos="-0.152 0.072 0.032" rgba="0.97 0.97 0.99 1" mass="0.02"/>
+      <geom name="wingR" type="box" size="0.012 0.006 0.028" pos="-0.152 -0.072 0.032" rgba="0.97 0.97 0.99 1" mass="0.02"/>
+      <body name="w_fl" pos=" 0.105  0.105 -0.012"><joint name="j_fl" class="wheel"/><geom name="t_fl" class="wheel"/></body>
+      <body name="w_fr" pos=" 0.105 -0.105 -0.012"><joint name="j_fr" class="wheel"/><geom name="t_fr" class="wheel"/></body>
+      <body name="w_rl" pos="-0.105  0.105 -0.012"><joint name="j_rl" class="wheel"/><geom name="t_rl" class="wheel"/></body>
+      <body name="w_rr" pos="-0.105 -0.105 -0.012"><joint name="j_rr" class="wheel"/><geom name="t_rr" class="wheel"/></body>
+      <site name="s_front" pos=" 0.152  0     0.012" zaxis=" 1      0      0" size="0.007"/>
+      <site name="s_left"  pos=" 0.156  0.050 0.012" zaxis=" 0.7071  0.7071 0" size="0.007"/>
+      <site name="s_right" pos=" 0.156 -0.050 0.012" zaxis=" 0.7071 -0.7071 0" size="0.007"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <velocity name="m_fl" joint="j_fl" kv="12" ctrlrange="-20 20" forcerange="-0.6 0.6"/>
+    <velocity name="m_fr" joint="j_fr" kv="12" ctrlrange="-20 20" forcerange="-0.6 0.6"/>
+    <velocity name="m_rl" joint="j_rl" kv="12" ctrlrange="-20 20" forcerange="-0.6 0.6"/>
+    <velocity name="m_rr" joint="j_rr" kv="12" ctrlrange="-20 20" forcerange="-0.6 0.6"/>
+  </actuator>
+  <sensor>
+    <rangefinder name="d_left"  site="s_left"  cutoff="4"/>
+    <rangefinder name="d_front" site="s_front" cutoff="4"/>
+    <rangefinder name="d_right" site="s_right" cutoff="4"/>
+  </sensor>
+</mujocoinclude>

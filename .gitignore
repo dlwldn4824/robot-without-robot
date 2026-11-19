@@ -1,0 +1,13 @@
+# PythonRobotics 는 외부 저장소다. 여기 담지 않고 각자 클론해서 쓴다.
+#   git clone https://github.com/AtsushiSakai/PythonRobotics.git
+PythonRobotics/
+
+# 노션으로 내보내며 만든 사본. 내용은 w6/ 와 같다.
+W6-notion/
+W6-notion.zip
+
+# 작업 부산물
+__pycache__/
+*.pyc
+.DS_Store
+.README.local.bak

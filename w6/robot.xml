@@ -1,0 +1,57 @@
+<!-- W6 로봇: 2륜 differential drive + Left/Front/Right 거리센서 -->
+<mujocoinclude>
+
+  <worldbody>
+    <body name="chassis" pos="0 0 0.065">
+      <freejoint name="root"/>
+
+      <!-- 몸체 -->
+      <geom name="body" type="box" size="0.12 0.09 0.03"
+            rgba="0.20 0.45 0.80 1" mass="2.0"/>
+      <!-- 앞을 표시하는 코 -->
+      <geom name="nose" type="box" size="0.03 0.02 0.01" pos="0.13 0 0.02"
+            rgba="0.95 0.75 0.10 1" mass="0.02"/>
+
+      <!-- 앞뒤 캐스터: 마찰 0 인 구. 지면에서 1mm 띄워 하중은 바퀴가 받게 한다 -->
+      <geom name="caster_f" type="sphere" size="0.020" pos="0.095 0 -0.044"
+            friction="0 0 0" rgba="0.5 0.5 0.5 1" mass="0.05"/>
+      <geom name="caster_b" type="sphere" size="0.020" pos="-0.095 0 -0.044"
+            friction="0 0 0" rgba="0.5 0.5 0.5 1" mass="0.05"/>
+
+      <!-- 좌우 바퀴: hinge 관절 (y 축 회전) -->
+      <body name="wheel_left" pos="0 0.10 -0.02">
+        <joint name="left_hinge" type="hinge" axis="0 1 0"/>
+        <geom name="tire_left" type="cylinder" size="0.045 0.018" zaxis="0 1 0"
+              rgba="0.12 0.12 0.12 1" mass="0.2"
+              friction="3.0 0.02 0.002"/>
+      </body>
+      <body name="wheel_right" pos="0 -0.10 -0.02">
+        <joint name="right_hinge" type="hinge" axis="0 1 0"/>
+        <geom name="tire_right" type="cylinder" size="0.045 0.018" zaxis="0 1 0"
+              rgba="0.12 0.12 0.12 1" mass="0.2"
+              friction="3.0 0.02 0.002"/>
+      </body>
+
+      <!-- 거리 센서.  site 의 z 축 방향으로 광선을 쏜다.
+           Left/Right 는 정면에서 45도 벌렸다 (90도면 대각선 장애물을 못 본다) -->
+      <site name="s_front" pos="0.125 0     0.01" zaxis=" 1      0     0" size="0.008" rgba="1 0 0 1"/>
+      <site name="s_left"  pos="0.10  0.06  0.01" zaxis=" 0.7071 0.7071 0" size="0.008" rgba="0 1 0 1"/>
+      <site name="s_right" pos="0.10 -0.06  0.01" zaxis=" 0.7071 -0.7071 0" size="0.008" rgba="0 0 1 1"/>
+    </body>
+  </worldbody>
+
+  <!-- 바퀴 속도 제어. forcerange 가 없으면 t=0 에 250 N·m 가 걸려 로봇이 날아간다 -->
+  <actuator>
+    <velocity name="left_wheel"  joint="left_hinge"  kv="15" ctrlrange="-12 12" forcerange="-1.0 1.0"/>
+    <velocity name="right_wheel" joint="right_hinge" kv="15" ctrlrange="-12 12" forcerange="-1.0 1.0"/>
+  </actuator>
+
+  <!-- 거리 센서. 아무것도 안 맞으면 -1 을 돌려준다 -->
+  <sensor>
+    <rangefinder name="left"  site="s_left"  cutoff="5"/>
+    <rangefinder name="front" site="s_front" cutoff="5"/>
+    <rangefinder name="right" site="s_right" cutoff="5"/>
+    <framepos    name="base_pos"  objtype="site" objname="s_front"/>
+  </sensor>
+
+</mujocoinclude>

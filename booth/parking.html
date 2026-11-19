@@ -1,0 +1,1038 @@
+<meta charset="utf-8">
+<title>눈 감고 주차하기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+
+<style>
+/* 계기판 한 화면. 왼쪽은 주행 캔버스, 오른쪽은 펌웨어 텔레메트리와 기록.
+   좁아지면 한 칸으로 쌓인다. 색은 W6·W7 그림에서 쓴 것과 같은 값. */
+:root {
+  --bg:     #0b0f16;
+  --panel:  #141b25;
+  --panel2: #1a2330;
+  --line:   #27323f;
+  --fg:     #e9eef5;
+  --dim:    #8794a6;
+  --faint:  #5a6778;
+
+  --est:    #3b82f6;   /* 로봇이 믿는 위치 */
+  --truth:  #e0483a;   /* 실제 위치 */
+  --goal:   #15a46a;   /* 비컨·목표 */
+  --mark:   #efa63c;   /* 랜드마크 */
+  --ir:     #6ee7d5;   /* IR 빔 */
+  --floor:  #121a24;
+  --wall:   #51637c;
+
+  --sans: 'IBM Plex Sans KR', -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR',
+          'Malgun Gothic', 'Pretendard', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, 'DejaVu Sans Mono', monospace;
+  color-scheme: dark;
+}
+
+/* 아티팩트 스켈레톤이 없는 환경(S3·오프라인 사본)에서도 같게 동작하도록 직접 둔다 */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;        /* 한글이 단어 중간에서 끊기지 않게 */
+  overflow-wrap: break-word;
+}
+
+#app {
+  height: 100%; box-sizing: border-box;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px;
+  display: grid; gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 286px;
+}
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: 62vh auto; height: auto; }
+}
+
+/* ── 캔버스 ─────────────────────────────── */
+#stage {
+  position: relative; min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line); border-radius: 14px;
+  overflow: hidden;
+}
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+#badge {
+  position: absolute; top: 14px; left: 14px;
+  display: flex; align-items: center; gap: 9px;
+  background: rgba(11,15,22,.82); backdrop-filter: blur(6px);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 7px 15px 7px 11px;
+  font-size: 13.5px; font-weight: 600; letter-spacing: .01em;
+}
+#badgeDot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); transition: background .18s; }
+#badgeSub { color: var(--dim); font-weight: 500; font-family: var(--mono); font-size: 12.5px; }
+
+/* 왜 이런 일이 벌어지는지는 그 일이 벌어지는 순간에 한 줄로 말해 준다 */
+#tip {
+  position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+  max-width: min(560px, calc(100% - 200px));
+  background: rgba(11,15,22,.92); backdrop-filter: blur(7px);
+  border: 1px solid var(--line); border-left: 3px solid var(--mark);
+  border-radius: 10px; padding: 10px 16px;
+  font-size: 14.5px; line-height: 1.55; color: var(--fg); text-align: left;
+  opacity: 0; transition: opacity .35s ease; pointer-events: none;
+}
+#tip.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
+@media (max-width: 620px) { #tip { font-size: 13px; max-width: calc(100% - 32px); } }
+
+/* 혼자 와서 해 보는 사람을 위해 조작법은 주행 내내 띄워 둔다 */
+#hud {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: flex; gap: 18px; align-items: center; white-space: nowrap;
+  background: rgba(11,15,22,.84); backdrop-filter: blur(6px);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 9px 18px; font-size: 13.5px; color: var(--dim);
+}
+#hud kbd {
+  display: inline-block; min-width: 1.4em; text-align: center;
+  font-family: var(--mono); font-size: 12.5px; color: var(--fg);
+  background: var(--panel2); border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 5px;
+  padding: 2px 6px; margin-right: 4px;
+}
+@media (max-width: 560px) { #hud { gap: 11px; font-size: 12px; padding: 7px 13px; } }
+
+/* ── 오버레이 ───────────────────────────── */
+#overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px; text-align: center; padding: 26px;
+  background: radial-gradient(ellipse at 50% 45%, rgba(11,15,22,.88), rgba(11,15,22,.97));
+}
+#overlay[hidden] { display: none !important; }
+#overlay.attract { background: linear-gradient(to bottom, rgba(11,15,22,.90), rgba(11,15,22,.70) 45%, rgba(11,15,22,.92)); }
+/* 결과에서는 캔버스를 가리지 않는다. 되감기를 봐야 하기 때문이다. */
+#overlay.result {
+  background: linear-gradient(to top, rgba(11,15,22,.97) 0%, rgba(11,15,22,.93) 30%, rgba(11,15,22,0) 100%);
+  justify-content: flex-end; gap: 10px; padding-bottom: 20px;
+}
+#overlay.result .big { font-size: clamp(19px, 2.3vw, 27px); }
+#overlay.result .sub { font-size: clamp(13px, 1.4vw, 16px); }
+#overlay.result #errNum { font-size: clamp(40px, 7.5vw, 86px); }
+#overlay.result #errUnit { font-size: clamp(17px, 2.6vw, 30px); }
+#replayTag {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--faint); margin: 0;
+}
+
+.big { margin: 0; font-size: clamp(28px, 4.6vw, 54px); font-weight: 700; line-height: 1.12; text-wrap: balance; letter-spacing: -.02em; }
+.sub { margin: 0; max-width: 44ch; font-size: clamp(14px, 1.6vw, 19px); line-height: 1.65; color: var(--dim); }
+.eyebrow { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: var(--goal); }
+
+.rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; text-align: left; }
+.rules li { display: flex; gap: 13px; align-items: baseline; font-size: clamp(14px, 1.55vw, 18px); }
+.rules b { font-family: var(--mono); font-weight: 600; color: var(--est); min-width: 1.5em; }
+
+.blink { color: var(--fg); font-weight: 600; font-size: 15px; animation: pulse 1.7s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+@media (prefers-reduced-motion: reduce) { .blink { animation: none } }
+
+#errBox { font-family: var(--mono); font-weight: 700; line-height: .95; display: flex; align-items: baseline; justify-content: center; }
+#errNum { font-size: clamp(54px, 12vw, 140px); letter-spacing: -.045em; }
+#errUnit { font-size: clamp(20px, 3.6vw, 40px); color: var(--dim); margin-left: .1em; }
+#verdict { margin: 0; font-size: clamp(15px, 1.9vw, 22px); font-weight: 600; }
+
+.btnrow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
+button {
+  font-family: var(--sans); font-size: 16px; font-weight: 600; color: var(--fg);
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 9px; padding: 12px 20px; cursor: pointer; transition: filter .15s;
+}
+button.primary { background: var(--est); border-color: var(--est); color: #fff; }
+button:hover { filter: brightness(1.16); }
+button:focus-visible { outline: 3px solid var(--mark); outline-offset: 2px; }
+
+#nameIn {
+  font-family: var(--sans); font-size: 16px; text-align: center; width: 200px;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 9px; padding: 11px 14px;
+}
+
+/* ── 오른쪽 ─────────────────────────────── */
+#side { display: flex; flex-direction: column; gap: 11px; min-width: 0; overflow-y: auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; }
+.card h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 4px 0; font-size: 14px; color: var(--dim); }
+.kv b { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fg); }
+
+/* PWM 막대 — 0 을 가운데 두고 부호대로 뻗는다 */
+.pwm { display: grid; grid-template-columns: 18px 1fr 52px; align-items: center; gap: 9px; padding: 3px 0; }
+.pwm i { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.track { position: relative; height: 9px; background: var(--panel2); border-radius: 5px; overflow: hidden; }
+.track::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.fill { position: absolute; top: 0; bottom: 0; background: var(--est); border-radius: 3px; transition: left .06s linear, width .06s linear; }
+.pwm span { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; color: var(--fg); }
+
+.ir { display: grid; grid-template-columns: 26px 1fr 60px; align-items: center; gap: 9px; padding: 3px 0; font-size: 12.5px; }
+.ir i { font-style: normal; font-family: var(--mono); color: var(--faint); }
+.irbar { height: 9px; background: var(--panel2); border-radius: 5px; overflow: hidden; }
+.irbar div { height: 100%; background: var(--ir); border-radius: 5px; transition: width .08s linear; }
+.ir span { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+ol#board { list-style: none; margin: 0; padding: 0; display: grid; }
+ol#board li { display: grid; grid-template-columns: 1.4em 1fr auto; gap: 8px; padding: 5px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+ol#board li:last-child { border-bottom: 0; }
+ol#board .r { font-family: var(--mono); color: var(--faint); }
+ol#board .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ol#board .e { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+ol#board li.me { color: var(--mark); }
+.empty { margin: 0; font-size: 13px; color: var(--faint); }
+
+.legend { display: grid; gap: 6px; font-size: 13px; color: var(--dim); }
+.legend div { display: flex; align-items: center; gap: 9px; }
+.sw { width: 14px; height: 4px; border-radius: 2px; flex: none; }
+.note { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--dim); }
+.note b { color: var(--fg); }
+
+#touch { display: none; }
+@media (pointer: coarse) {
+  #touch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  #touch button { padding: 15px 0; font-size: 19px; }
+  #touch .wide { grid-column: 1 / -1; font-size: 15px; }
+}
+</style>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <div id="badge"><i id="badgeDot"></i><span id="badgeName">부팅</span><span id="badgeSub">fw_i_state</span></div>
+
+    <div id="tip"></div>
+
+    <div id="hud" hidden>
+      <span><kbd>↑</kbd> 전진</span>
+      <span><kbd>←</kbd><kbd>→</kbd> 회전</span>
+      <span><kbd>space</kbd> 다 왔다</span>
+    </div>
+
+    <div id="overlay" class="attract">
+      <p class="eyebrow" id="oEyebrow">firmware.c · wasm32 · 4.3 KB</p>
+      <h1 class="big" id="oTitle">눈 감고 주차하기</h1>
+      <p class="sub" id="oSub">화면 속 로봇은 <b style="color:var(--est)">로봇이 믿는 위치</b>입니다. 진짜 위치는 아무도 안 알려 줍니다.</p>
+
+      <ul class="rules" id="oRules">
+        <li><b>1</b><span>방향키로 몹니다. 파란 원은 로봇이 <b style="color:#93beff">이 안 어딘가 있겠지</b> 하고 짐작하는 범위입니다</span></li>
+        <li><b>2</b><span>달릴수록 원이 커집니다. 자기가 어디 있는지 점점 모르게 된다는 뜻입니다</span></li>
+        <li><b>3</b><span>주차 칸에 넣었다 싶으면 스페이스바. 그때 진짜 위치가 나옵니다</span></li>
+      </ul>
+
+      <div id="errBox" hidden><span id="errNum">0.00</span><span id="errUnit">m</span></div>
+      <p id="verdict" hidden></p>
+      <p id="replayTag" hidden>replay · 실제로 이렇게 움직였습니다</p>
+      <div class="btnrow" id="oButtons"></div>
+      <p class="blink" id="oHint">아무 키나 누르면 시작합니다</p>
+    </div>
+  </div>
+
+  <div id="side">
+    <div class="card">
+      <h2>펌웨어 출력 · PWM</h2>
+      <div class="pwm"><i>L</i><div class="track"><div class="fill" id="pwmL"></div></div><span id="pwmLv">0</span></div>
+      <div class="pwm"><i>R</i><div class="track"><div class="fill" id="pwmR"></div></div><span id="pwmRv">0</span></div>
+      <div class="kv" style="margin-top:6px"><span>선속도</span><b id="vOut">0 mm/s</b></div>
+      <div class="kv"><span>각속도</span><b id="wOut">0 °/s</b></div>
+    </div>
+
+    <div class="card">
+      <h2>IR 거리계 · 필터값</h2>
+      <div class="ir"><i>왼</i><div class="irbar"><div id="irL"></div></div><span id="irLv">—</span></div>
+      <div class="ir"><i>앞</i><div class="irbar"><div id="irF"></div></div><span id="irFv">—</span></div>
+      <div class="ir"><i>오른</i><div class="irbar"><div id="irR"></div></div><span id="irRv">—</span></div>
+      <p class="note" style="margin-top:9px">ADC 카운트를 <b>fw_adc_to_mm</b>으로 바꾼 뒤 1차 저역통과를 거친 값입니다.</p>
+    </div>
+
+    <div class="card">
+      <h2>주행</h2>
+      <div class="kv"><span>모드</span><b id="modeName">펌웨어 자율</b></div>
+      <div class="kv"><span>내 위치 헷갈림</span><b id="unc">±0.00 m</b></div>
+      <div class="kv"><span>달린 거리</span><b id="dist">0.00 m</b></div>
+      <div class="kv"><span>시간</span><b id="clock">0.0 s</b></div>
+      <div class="kv"><span>틱 · 스톨</span><b id="ticks">0 · 0</b></div>
+    </div>
+
+    <div class="card">
+      <h2 id="boardTitle">기록 · 보정 없음</h2>
+      <ol id="board"></ol>
+      <p class="empty" id="boardEmpty">아직 기록이 없습니다</p>
+    </div>
+
+    <div class="card">
+      <h2>범례</h2>
+      <div class="legend">
+        <div><i class="sw" style="background:var(--est)"></i>로봇이 믿는 위치</div>
+        <div><i class="sw" style="background:var(--truth)"></i>실제 위치 (공개 후)</div>
+        <div><i class="sw" style="background:var(--ir)"></i>IR 빔</div>
+        <div><i class="sw" style="background:var(--goal)"></i>비컨 · 주차 칸</div>
+        <div><i class="sw" style="background:var(--mark)"></i>랜드마크 (SLAM)</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>무슨 이야기냐면</h2>
+      <p class="note">바퀴가 몇 바퀴 돌았는지만 세서 위치를 아는 것이 Odometry입니다. 오차가 지워지지 않고 쌓이기만 해서 50 m를 달리면 <b>5.54 m</b>까지 틀어집니다. 밖을 보고 다시 맞추면 <b>0.70 m</b>가 됩니다.</p>
+      <p class="note" style="margin-top:8px">이 화면의 바퀴 명령과 센서 변환은 MCU에 올리는 <b>firmware.c</b>를 wasm으로 컴파일해 그대로 부르고 있습니다. SLAM 보정만 흉내입니다.</p>
+    </div>
+
+    <div id="touch">
+      <button data-k="ArrowLeft" aria-label="좌회전">◀</button>
+      <button data-k="ArrowUp" aria-label="전진">▲</button>
+      <button data-k="ArrowRight" aria-label="우회전">▶</button>
+      <button data-k="ArrowDown" aria-label="후진">▼</button>
+      <button data-k=" " class="wide" style="grid-column:span 2">도착</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ────────────────────────────────────────────────────────────
+   세계. 펌웨어가 mm 로 생각하므로(STOP_MM 480, SIDE_MM 380)
+   방도 그 눈금에 맞춘다. 5.6 x 3.6 m 짜리 실내 아레나.
+   ──────────────────────────────────────────────────────────── */
+const W = 5.6, H = 3.6, R = 0.15;
+const WALLS = [
+  [0,0, W,0], [W,0, W,H], [W,H, 0,H], [0,H, 0,0],
+  [2.0, 0, 2.0, 2.0],      // 위로 돌아가야 한다
+  [3.8, 1.6, 3.8, H],      // 아래로 돌아가야 한다
+];
+const GOAL  = { x0: 4.55, y0: 0.30, x1: 5.32, y1: 1.18 };
+const BEACON = [(GOAL.x0 + GOAL.x1) / 2, (GOAL.y0 + GOAL.y1) / 2];
+const START = { x: 0.5, y: 0.55, th: 0 };
+const MARKS = [[0.06,1.9],[1.1,3.54],[2.9,0.06],[5.54,2.5],[4.4,3.54]];
+const FOV = 65 * Math.PI / 180;   // 표식은 앞쪽 ±65도 안에 있어야 보인다
+
+const IR_ANG = [+60, 0, -60].map(d => d * Math.PI / 180);   // 왼 · 앞 · 오른
+const IR_MAX = 4.0;                       // fw_adc_to_mm 의 상한 4000 mm
+const SENSE_RANGE = 2.1, GAIN = 1.5, LM_ERR = 0.13;
+const TICK_MS = 20;                       // 펌웨어와 같은 주기
+const PWM = { CRUISE: 210, TURN: 150, SLOW: 110, MAX: 255 };
+const IDLE_MS = 15000, RESULT_MS = 25000;
+
+const ST = ['부팅','순항','감속','좌회피','우회피','탈출','도착','후진','제자리회전'];
+const ST_COLOR = ['--faint','--goal','--mark','--est','--est','--truth','--goal','--truth','--truth'];
+
+/* ── 펌웨어 ─────────────────────────────── */
+let FW = null;                            // wasm exports
+const SLOT_AUTO = 0, SLOT_HUMAN = 1;
+
+/* firmware.wasm 을 페이지 안에 그대로 넣어 둔다.
+   부스에서 인터넷이 없어도, file:// 로 더블클릭해 열어도 똑같이 돈다.
+   clang --target=wasm32 --no-standard-libraries -Wl,--no-entry 로 빌드한 그 파일이다. */
+const FW_B64 = 'AGFzbQEAAAABPQlgAABgAX8Bf2AEf39/fwF/YAJ/fwF/YAN/f38Bf2ABfwBgCX9/f39/f39/fwBgCH9/f39/f39/AGAAAX8DGxoAAQEBAgEBAwMEBQYHAQEBAwEBAQAHAQgICAUDAQACBl0OfwFBgIAEC38AQQALfwBBAQt/AEGAgAQLfwBBgIAEC38AQbCDBAt/AEGAgAQLfwBB8IEEC38AQQALfwBBgIAEC38AQYCABAt/AEGwgwQLfwBBgIAIC38AQYCABAsHvwQpBm1lbW9yeQIAEV9fd2FzbV9jYWxsX2N0b3JzAAAPX19zdGFja19wb2ludGVyAwAMZndfYWRjX3RvX21tAAEMZndfbW1fdG9fYWRjAAIOZndfY2hlY2tfc3RhdGUAAwhmd19iYXNpYwAECGZ3X2FjdF9sAAUIZndfYWN0X3IABglmd192X21tX3MABwtmd193X21kZWdfcwAICWZ3X2JlYWNvbgAJCmZ3X2lfc2V0dXAACglmd19pX2xvb3AACwlmd19pX3RpY2sADApmd19pX291dF9sAA0KZndfaV9vdXRfcgAOCmZ3X2lfc3RhdGUADwdmd19pX21tABALZndfaV9zdGFsbHMAEQpmd19pX3RpY2tzABIMZndfaV9jaGFuZ2VzABMIZndfc2V0dXAAFAdmd19sb29wABUJZndfZ2V0X21tABYNZndfZ2V0X3N0YWxscwAXDGZ3X2dldF90aWNrcwAYDmZ3X2dldF9jaGFuZ2VzABkMX19kc29faGFuZGxlAwQKX19kYXRhX2VuZAMFDl9fcm9kYXRhX3N0YXJ0AwYMX19yb2RhdGFfZW5kAwcLX19zdGFja19sb3cDCAxfX3N0YWNrX2hpZ2gDCQ1fX2dsb2JhbF9iYXNlAwoLX19oZWFwX2Jhc2UDCwpfX2hlYXBfZW5kAwwNX19tZW1vcnlfYmFzZQMBDF9fdGFibGVfYmFzZQMCFV9fd2FzbV9maXJzdF9wYWdlX2VuZAMNCl9fdGxzX2Jhc2UDAwrtFBoCAAsyAQF/AkAgAEEBTg0AQaAfDwtBAEG48AwgAG5BkX9qIgFBoB8gAUGgH0kbIABB7A5LGwshAEG48AwgAEEAIABBAEobQe8Aam4iAEH/ByAAQf8HSRsLFgBBAEEBQQIgAEHoB0kbIABB9ANIGwstAQF/IAEg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3y3HK6wpjidsJUgjISH3HsscnRpsGDoWBhTQEZkPYQ0oC+4IswZ4BDwCAAAAAP8AAABq////lgAAAAAAAABuAAAANwAAANIAAAD/AAAAlgAAAGr///8AAAAAbgAAANIAAAA3AAAAAKMDBG5hbWUADg1maXJtd2FyZS53YXNtAcICGgARX193YXNtX2NhbGxfY3RvcnMBDGZ3X2FkY190b19tbQIMZndfbW1fdG9fYWRjAw5md19jaGVja19zdGF0ZQQIZndfYmFzaWMFCGZ3X2FjdF9sBghmd19hY3RfcgcJZndfdl9tbV9zCAtmd193X21kZWdfcwkJZndfYmVhY29uCgpmd19pX3NldHVwCwlmd19pX2xvb3AMCWZ3X2lfdGljaw0KZndfaV9vdXRfbA4KZndfaV9vdXRfcg8KZndfaV9zdGF0ZRAHZndfaV9tbRELZndfaV9zdGFsbHMSCmZ3X2lfdGlja3MTDGZ3X2lfY2hhbmdlcxQIZndfc2V0dXAVB2Z3X2xvb3AWCWZ3X2dldF9tbRcNZndfZ2V0X3N0YWxscxgMZndfZ2V0X3RpY2tzGQ5md19nZXRfY2hhbmdlcwc7BAAPX19zdGFja19wb2ludGVyAQ1fX21lbW9yeV9iYXNlAgxfX3RhYmxlX2Jhc2UDCl9fdGxzX2Jhc2UJCgEABy5yb2RhdGEAQAlwcm9kdWNlcnMBDHByb2Nlc3NlZC1ieQELQXBwbGUgY2xhbmcaMjEuMC4wIChjbGFuZy0yMTAwLjMuMzQuMikAlAEPdGFyZ2V0X2ZlYXR1cmVzCCsLYnVsay1tZW1vcnkrD2J1bGstbWVtb3J5LW9wdCsWY2FsbC1pbmRpcmVjdC1vdmVybG9uZysKbXVsdGl2YWx1ZSsPbXV0YWJsZS1nbG9iYWxzKxNub250cmFwcGluZy1mcHRvaW50Kw9yZWZlcmVuY2UtdHlwZXMrCHNpZ24tZXh0';
+
+async function loadFirmware() {
+  try {
+    const raw = atob(FW_B64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const { instance } = await WebAssembly.instantiate(bytes.buffer, {});
+    FW = instance.exports;
+    return true;
+  } catch (e) {
+    FW = null;                            // 못 불러오면 JS 근사로 계속 간다
+    console.error('firmware', e);
+    return false;
+  }
+}
+// 펌웨어가 없을 때 쓰는 같은 식의 JS 판 (VMAX 630 mm/s, WHEELBASE 200 mm)
+const vmm = (l, r) => FW ? FW.fw_v_mm_s(l, r) : ((l + r) * 630 / 510) | 0;
+const wmd = (l, r) => FW ? FW.fw_w_mdeg_s(l, r) : ((((r - l) * 630 / 255) * 1000 / 200) * 57296 / 1000) | 0;
+const mm2adc = mm => FW ? FW.fw_mm_to_adc(mm) : Math.max(0, Math.min(1023, (211000 / (mm + 111)) | 0));
+
+/* ── 상태 ───────────────────────────────── */
+const MODE = { AUTO: 'auto', ODO: 'odo', SLAM: 'slam' };
+const PHASE = { TITLE: 'title', PLAY: 'play', RESULT: 'result' };
+let phase = PHASE.TITLE, mode = MODE.AUTO;
+let run = null, lastInput = performance.now(), resultAt = 0, myLast = null, pendingName = '';
+const keys = Object.create(null);
+
+function newRun() {
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const gauss = () => {
+    let u = 0, v = 0;
+    while (!u) u = Math.random();
+    while (!v) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  };
+  return {
+    t: { ...START }, e: { ...START },
+    trailT: [[START.x, START.y]], trailE: [[START.x, START.y]],
+    dist: 0, time: 0, acc: 0, tms: 0,
+    pwmL: 0, pwmR: 0, state: 0, mm: [4000, 4000, 4000], hits: [null, null, null],
+    stalls: 0, ticks: 0,
+    unc: 0,                       // 로봇이 스스로 추정하는 '내 위치가 헷갈리는 정도' (m)
+    tips: {},                     // 이미 보여 준 설명
+    bias: { head: rnd(-0.09, 0.09), turn: rnd(0.85, 1.15), scale: rnd(0.91, 1.09) },
+    lmOff: MARKS.map(() => [gauss() * LM_ERR, gauss() * LM_ERR]),
+    seen: [], done: false, arrived: false,
+  };
+}
+
+/* ── 한 줄 설명 ─────────────────────────── */
+const TIP_MS = 4800;
+const tipQ = [];
+let tipUntil = 0;
+
+function showTip(key, text, accent) {      // 같은 설명은 한 판에 한 번만
+  if (!run || run.tips[key]) return;
+  run.tips[key] = 1;
+  tipQ.push({ text, accent });
+}
+function pumpTips(now) {                   // 겹치지 않게 차례로 띄운다
+  const el = $('tip');
+  if (now < tipUntil) return;
+  if (tipQ.length) {
+    const t = tipQ.shift();
+    el.textContent = t.text;
+    el.style.borderLeftColor = C(t.accent || '--mark');
+    el.classList.add('on');
+    tipUntil = now + TIP_MS;
+  } else if (el.classList.contains('on')) {
+    el.classList.remove('on');
+  }
+}
+function hideTip() { tipQ.length = 0; tipUntil = 0; $('tip').classList.remove('on'); }
+
+/* ── 기하 ───────────────────────────────── */
+function distToSeg(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+  let t = L2 ? ((px - x1) * dx + (py - y1) * dy) / L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+const hitsWall = (x, y) => WALLS.some(w => distToSeg(x, y, w[0], w[1], w[2], w[3]) < R);
+
+function rayHit(px, py, ang) {            // 벽까지 거리 (m) 와 닿은 점
+  let best = IR_MAX, bx = null, by = null;
+  const dx = Math.cos(ang), dy = Math.sin(ang);
+  for (const [x1, y1, x2, y2] of WALLS) {
+    const sx = x2 - x1, sy = y2 - y1;
+    const den = dx * sy - dy * sx;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((x1 - px) * sy - (y1 - py) * sx) / den;
+    const u = ((x1 - px) * dy - (y1 - py) * dx) / den;
+    if (t > 0 && t < best && u >= 0 && u <= 1) { best = t; bx = px + t * dx; by = py + t * dy; }
+  }
+  return [best, bx, by];
+}
+function blocked(x1, y1, x2, y2) {
+  for (const [x3, y3, x4, y4] of WALLS) {
+    const d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+    if (Math.abs(d) < 1e-9) continue;
+    const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d;
+    const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
+    if (t > 0.001 && t < 0.999 && u >= 0 && u <= 1) return true;
+  }
+  return false;
+}
+const inGoal = (x, y) => x > GOAL.x0 && x < GOAL.x1 && y > GOAL.y0 && y < GOAL.y1;
+
+/* ── 사람 입력 → PWM ────────────────────── */
+function humanPwm() {
+  const up = !!keys.ArrowUp, dn = !!keys.ArrowDown;
+  const lf = !!keys.ArrowLeft, rt = !!keys.ArrowRight;
+  if (up && lf) return [PWM.SLOW, PWM.CRUISE];
+  if (up && rt) return [PWM.CRUISE, PWM.SLOW];
+  if (up) return [PWM.CRUISE, PWM.CRUISE];
+  if (dn) return [-PWM.TURN, -PWM.TURN];
+  if (lf) return [-PWM.TURN, PWM.TURN];
+  if (rt) return [PWM.TURN, -PWM.TURN];
+  return [0, 0];
+}
+
+/* ── 한 틱 (20 ms) ──────────────────────── */
+function tick(r) {
+  r.tms += TICK_MS;
+  r.ticks++;
+
+  // 센서는 언제나 실제 위치에서 잰다
+  for (let i = 0; i < 3; i++) {
+    const [d, bx, by] = rayHit(r.t.x, r.t.y, r.t.th + IR_ANG[i]);
+    r.hits[i] = bx === null ? null : [bx, by];
+    r.rawMm = r.rawMm || [0, 0, 0];
+    r.rawMm[i] = Math.round(d * 1000);
+  }
+
+  if (mode === MODE.AUTO && FW) {
+    const bd = Math.hypot(BEACON[0] - r.t.x, BEACON[1] - r.t.y) * 1000;
+    let ba = Math.atan2(BEACON[1] - r.t.y, BEACON[0] - r.t.x) - r.t.th;
+    ba = Math.atan2(Math.sin(ba), Math.cos(ba)) * 180 / Math.PI;
+    const bl = FW.fw_beacon(Math.round(ba), Math.round(bd), 1);
+    const br = FW.fw_beacon(Math.round(ba), Math.round(bd), 0);
+    const enc = Math.round(r.lastDs * 2000);           // 실제로 움직인 만큼만
+    FW.fw_i_tick(SLOT_AUTO, r.tms, mm2adc(r.rawMm[0]), mm2adc(r.rawMm[1]), mm2adc(r.rawMm[2]), bl, br, enc);
+    r.pwmL = FW.fw_i_out_l(SLOT_AUTO);
+    r.pwmR = FW.fw_i_out_r(SLOT_AUTO);
+    r.state = FW.fw_i_state(SLOT_AUTO);
+    r.mm = [FW.fw_i_mm(SLOT_AUTO,0), FW.fw_i_mm(SLOT_AUTO,1), FW.fw_i_mm(SLOT_AUTO,2)];
+    r.stalls = FW.fw_i_stalls(SLOT_AUTO);
+    if (r.state === 6) r.arrived = true;
+  } else {
+    [r.pwmL, r.pwmR] = humanPwm();
+    if (FW) {                                           // 센서 필터는 펌웨어 것을 그대로 쓴다
+      FW.fw_i_tick(SLOT_HUMAN, r.tms, mm2adc(r.rawMm[0]), mm2adc(r.rawMm[1]), mm2adc(r.rawMm[2]), 0, 0, 999);
+      r.mm = [FW.fw_i_mm(SLOT_HUMAN,0), FW.fw_i_mm(SLOT_HUMAN,1), FW.fw_i_mm(SLOT_HUMAN,2)];
+      r.state = FW.fw_check_state(r.mm[1]) === 0 ? 2 : 1;
+    } else {
+      r.mm = r.rawMm.slice();
+      r.state = r.pwmL || r.pwmR ? 1 : 0;
+    }
+  }
+}
+
+/* ── 움직임 (매 프레임) ─────────────────── */
+function move(r, dt) {
+  const v = vmm(r.pwmL, r.pwmR) / 1000;                 // m/s
+  const w = (wmd(r.pwmL, r.pwmR) / 1000) * Math.PI / 180;
+  const dth = w * dt, ds = v * dt;
+
+  r.t.th += dth;
+  const nx = r.t.x + ds * Math.cos(r.t.th);
+  const ny = r.t.y + ds * Math.sin(r.t.th);
+  const free = !hitsWall(nx, ny);
+  if (free) { r.t.x = nx; r.t.y = ny; }
+  r.lastDs = free ? Math.abs(ds) : 0;                   // 막히면 엔코더가 안 돈다 → 펌웨어가 스톨로 잡는다
+
+  // 추정 위치: 바퀴가 돈 만큼 그대로 믿는다
+  const b = r.bias;
+  r.e.th += dth * b.turn + Math.abs(ds) * b.head;
+  const es = ds * b.scale;
+  r.e.x += es * Math.cos(r.e.th);
+  r.e.y += es * Math.sin(r.e.th);
+
+  r.dist += Math.abs(ds);
+  r.time += dt;
+  // 달린 만큼 '내가 어디 있는지 모르겠는 정도' 가 커진다. 이게 Drift 다.
+  const uncBefore = r.unc;
+  r.unc += Math.abs(ds) * 0.105 + Math.abs(dth) * 0.035;
+
+  if (mode === MODE.ODO) {
+    if (r.unc > 0.22) showTip('o1', '로봇은 바퀴가 돈 횟수만 셉니다. 미끄러지거나 헛도는 만큼은 셀 방법이 없어서, 모르는 양이 계속 더해집니다.');
+    if (r.unc > 0.60) showTip('o2', '한 번 틀어진 오차는 되돌릴 기회가 없습니다. 지워지지 않고 쌓이기만 하는 것, 이게 Drift입니다.', '--truth');
+  }
+
+  r.seen = [];
+  if (mode === MODE.SLAM) {
+    MARKS.forEach((m, i) => {
+      if (Math.hypot(m[0] - r.t.x, m[1] - r.t.y) > SENSE_RANGE) return;
+      let a = Math.atan2(m[1] - r.t.y, m[0] - r.t.x) - r.t.th;
+      a = Math.atan2(Math.sin(a), Math.cos(a));
+      if (Math.abs(a) > FOV) return;                      // 뒤통수로는 못 본다
+      if (blocked(r.t.x, r.t.y, m[0], m[1])) return;
+      r.seen.push(i);
+    });
+    if (r.seen.length) {
+      const k = Math.min(0.5, GAIN * r.seen.length * dt);
+      const ox = r.seen.reduce((a, i) => a + r.lmOff[i][0], 0) / r.seen.length;
+      const oy = r.seen.reduce((a, i) => a + r.lmOff[i][1], 0) / r.seen.length;
+      r.e.x += (r.t.x + ox - r.e.x) * k;
+      r.e.y += (r.t.y + oy - r.e.y) * k;
+      let d2 = r.t.th - r.e.th;
+      d2 = Math.atan2(Math.sin(d2), Math.cos(d2));
+      r.e.th += d2 * k;
+      // 밖을 보면 헷갈리는 정도가 줄어든다. 랜드마크 자체의 오차 아래로는 안 내려간다.
+      r.unc = Math.max(LM_ERR, r.unc * (1 - k));
+
+      showTip('s1', '위치가 이미 알려진 표식이 보입니다. 로봇은 이 표식까지의 거리와 방향을 잽니다.', '--mark');
+      if (uncBefore - r.unc > 0.004)
+        showTip('s2', '"저 표식이 저 방향 저 거리에 보이려면 나는 여기 있어야 한다" — 그래서 원이 다시 줄어듭니다.', '--goal');
+      if (r.unc <= LM_ERR + 0.004)
+        showTip('s3', '표식의 기록된 위치도 조금 틀려 있어서, 원이 0까지 내려가지는 않습니다.', '--mark');
+    } else if (r.unc > LM_ERR * 2.2) {
+      showTip('s4', '지금은 보이는 표식이 없습니다. 아무것도 안 보이는 동안에는 원이 다시 커집니다.', '--truth');
+    }
+  }
+
+  const lt = r.trailT[r.trailT.length - 1];
+  if (Math.hypot(r.t.x - lt[0], r.t.y - lt[1]) > 0.04) {
+    r.trailT.push([r.t.x, r.t.y]);
+    r.trailE.push([r.e.x, r.e.y]);
+    if (r.trailT.length > 1200) { r.trailT.shift(); r.trailE.shift(); }
+  }
+}
+
+/* ── 그리기 ─────────────────────────────── */
+const cv = document.getElementById('view'), cx = cv.getContext('2d');
+let SC = 80, OX = 0, OY = 0, CSS = null;
+const C = n => CSS.getPropertyValue(n).trim();
+
+function fit() {
+  const b = cv.parentElement.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.max(1, Math.round(b.width * dpr));
+  cv.height = Math.max(1, Math.round(b.height * dpr));
+  const pad = 26 * dpr;
+  SC = Math.min((cv.width - pad * 2) / W, (cv.height - pad * 2) / H);
+  OX = (cv.width - W * SC) / 2;
+  OY = (cv.height - H * SC) / 2;
+}
+const PX = x => OX + x * SC, PY = y => OY + (H - y) * SC;
+
+function chassis(p, color, solid) {
+  const x = PX(p.x), y = PY(p.y), r = R * SC;
+  cx.save();
+  cx.translate(x, y); cx.rotate(-p.th);
+  if (solid) {
+    cx.shadowColor = color; cx.shadowBlur = r * 1.1;
+    cx.fillStyle = color;
+    cx.beginPath(); cx.roundRect(-r * .95, -r * .8, r * 1.9, r * 1.6, r * .45); cx.fill();
+    cx.shadowBlur = 0;
+    cx.fillStyle = 'rgba(255,255,255,.92)';            // 바퀴
+    cx.fillRect(-r * .35, -r * 1.02, r * .7, r * .26);
+    cx.fillRect(-r * .35,  r * .76, r * .7, r * .26);
+    cx.strokeStyle = 'rgba(255,255,255,.95)'; cx.lineWidth = Math.max(1.6, r * .18);
+    cx.beginPath(); cx.moveTo(r * .1, 0); cx.lineTo(r * .78, 0); cx.stroke();
+  } else {
+    cx.strokeStyle = color; cx.lineWidth = Math.max(2, r * .22);
+    cx.setLineDash([r * .38, r * .28]);
+    cx.beginPath(); cx.roundRect(-r * .95, -r * .8, r * 1.9, r * 1.6, r * .45); cx.stroke();
+    cx.setLineDash([]);
+    cx.beginPath(); cx.moveTo(r * .1, 0); cx.lineTo(r * .78, 0); cx.stroke();
+  }
+  cx.restore();
+}
+
+function trail(pts, color, alpha) {
+  if (pts.length < 2) return;
+  cx.globalAlpha = alpha; cx.strokeStyle = color;
+  cx.lineWidth = Math.max(1.6, SC * 0.016);
+  cx.lineJoin = cx.lineCap = 'round';
+  cx.beginPath(); cx.moveTo(PX(pts[0][0]), PY(pts[0][1]));
+  for (let i = 1; i < pts.length; i++) cx.lineTo(PX(pts[i][0]), PY(pts[i][1]));
+  cx.stroke(); cx.globalAlpha = 1;
+}
+
+/* 결과에서는 두 경로를 처음부터 다시 그린다.
+   어디서부터 벌어졌는지는 정지 화면보다 되감기가 훨씬 잘 보인다. */
+const REPLAY_RATE = 70;        // 초당 몇 점씩 되감을지
+const REPLAY_HOLD = 1.6;       // 끝에서 멈춰 있는 시간 (초)
+
+function poseAt(arr, k) {
+  const a = arr[Math.max(0, Math.min(arr.length - 1, k))];
+  const b = arr[Math.max(0, Math.min(arr.length - 1, k - 1))];
+  return { x: a[0], y: a[1], th: Math.atan2(a[1] - b[1], a[0] - b[0]) || 0 };
+}
+
+function drawReplay() {
+  if (mode === MODE.SLAM) {
+    for (const m of MARKS) {
+      cx.fillStyle = C('--mark'); cx.globalAlpha = .45;
+      cx.beginPath(); cx.arc(PX(m[0]), PY(m[1]), SC * .055, 0, Math.PI * 2); cx.fill();
+      cx.globalAlpha = 1;
+    }
+  }
+  const n = run.trailT.length;
+  const k = Math.min(n - 1, Math.floor(run.rep));
+  const prog = n > 1 ? k / (n - 1) : 1;
+
+  const te = run.trailE.slice(0, k + 1), tt = run.trailT.slice(0, k + 1);
+  trail(te, C('--est'), .45);
+  trail(tt, C('--truth'), .45);
+
+  const pe = poseAt(run.trailE, k), pt = poseAt(run.trailT, k);
+
+  // 커져 가는 불확실성 원
+  const ur = run.unc * prog * SC;
+  if (ur > SC * .03) {
+    cx.save();
+    const gg = cx.createRadialGradient(PX(pe.x), PY(pe.y), 0, PX(pe.x), PY(pe.y), ur);
+    gg.addColorStop(0, 'rgba(59,130,246,0)');
+    gg.addColorStop(1, 'rgba(59,130,246,.18)');
+    cx.fillStyle = gg;
+    cx.beginPath(); cx.arc(PX(pe.x), PY(pe.y), ur, 0, Math.PI * 2); cx.fill();
+    cx.restore();
+  }
+
+  // 두 위치를 잇는 줄. 벌어질수록 길어진다.
+  const gap = Math.hypot(pe.x - pt.x, pe.y - pt.y);
+  if (gap > 0.04) {
+    cx.save();
+    cx.setLineDash([SC * .07, SC * .055]);
+    cx.strokeStyle = 'rgba(224,72,58,.9)';
+    cx.lineWidth = Math.max(2, SC * .018);
+    cx.beginPath(); cx.moveTo(PX(pe.x), PY(pe.y)); cx.lineTo(PX(pt.x), PY(pt.y)); cx.stroke();
+    cx.restore();
+    const mx = (PX(pe.x) + PX(pt.x)) / 2, my = (PY(pe.y) + PY(pt.y)) / 2;
+    const label = gap.toFixed(2) + ' m';
+    cx.font = `700 ${Math.round(SC * .115)}px ${C('--mono')}`;
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    const w = cx.measureText(label).width + SC * .11;
+    cx.fillStyle = 'rgba(11,15,22,.88)';
+    cx.beginPath(); cx.roundRect(mx - w / 2, my - SC * .085, w, SC * .17, SC * .085); cx.fill();
+    cx.fillStyle = C('--truth');
+    cx.fillText(label, mx, my);
+    cx.textBaseline = 'alphabetic';
+  }
+
+  chassis(pt, C('--truth'), false);
+  chassis(pe, C('--est'), true);
+}
+
+function draw() {
+  cx.fillStyle = C('--panel'); cx.fillRect(0, 0, cv.width, cv.height);
+  cx.fillStyle = C('--floor');
+  cx.beginPath(); cx.roundRect(PX(0), PY(H), W * SC, H * SC, SC * .05); cx.fill();
+
+  cx.strokeStyle = C('--line'); cx.lineWidth = 1;      // 0.5 m 격자
+  for (let i = 0.5; i < W; i += 0.5) { cx.beginPath(); cx.moveTo(PX(i), PY(0)); cx.lineTo(PX(i), PY(H)); cx.stroke(); }
+  for (let j = 0.5; j < H; j += 0.5) { cx.beginPath(); cx.moveTo(PX(0), PY(j)); cx.lineTo(PX(W), PY(j)); cx.stroke(); }
+
+  // 비컨 글로우 + 주차 칸
+  const bx = PX(BEACON[0]), by = PY(BEACON[1]);
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 620);
+  const g = cx.createRadialGradient(bx, by, 0, bx, by, SC * (0.95 + 0.2 * pulse));
+  g.addColorStop(0, 'rgba(21,164,106,.42)'); g.addColorStop(1, 'rgba(21,164,106,0)');
+  cx.fillStyle = g; cx.beginPath(); cx.arc(bx, by, SC * 1.2, 0, Math.PI * 2); cx.fill();
+
+  cx.save();
+  cx.setLineDash([SC * .1, SC * .07]);
+  cx.strokeStyle = C('--goal'); cx.lineWidth = Math.max(2, SC * .022);
+  cx.strokeRect(PX(GOAL.x0), PY(GOAL.y1), (GOAL.x1 - GOAL.x0) * SC, (GOAL.y1 - GOAL.y0) * SC);
+  cx.restore();
+  cx.fillStyle = C('--goal'); cx.globalAlpha = .1;
+  cx.fillRect(PX(GOAL.x0), PY(GOAL.y1), (GOAL.x1 - GOAL.x0) * SC, (GOAL.y1 - GOAL.y0) * SC);
+  cx.globalAlpha = 1;
+  cx.fillStyle = C('--goal');
+  cx.beginPath(); cx.arc(bx, by, SC * .055, 0, Math.PI * 2); cx.fill();
+  cx.font = `600 ${Math.round(SC * .13)}px ${C('--sans')}`;
+  cx.textAlign = 'center';
+  cx.fillText('주차 칸', (PX(GOAL.x0) + PX(GOAL.x1)) / 2, PY(GOAL.y1) - SC * .1);
+
+  cx.strokeStyle = C('--wall');                        // 벽
+  cx.lineWidth = Math.max(3, SC * .055); cx.lineCap = 'round';
+  for (const w of WALLS) { cx.beginPath(); cx.moveTo(PX(w[0]), PY(w[1])); cx.lineTo(PX(w[2]), PY(w[3])); cx.stroke(); }
+  cx.lineCap = 'butt';
+
+  if (!run) return;
+  if (run.done) { drawReplay(); return; }
+  const showTruth = mode === MODE.AUTO;
+  const ref = showTruth ? run.t : run.e;
+
+  if (mode === MODE.SLAM) {                            // 랜드마크
+    MARKS.forEach((m, i) => {
+      const on = run.seen.includes(i);
+      cx.fillStyle = C('--mark'); cx.globalAlpha = on ? 1 : .35;
+      cx.beginPath(); cx.arc(PX(m[0]), PY(m[1]), SC * (on ? .075 : .055), 0, Math.PI * 2); cx.fill();
+      cx.globalAlpha = 1;
+      if (on && phase === PHASE.PLAY) {
+        cx.save(); cx.globalAlpha = .45; cx.setLineDash([SC * .06, SC * .06]);
+        cx.strokeStyle = C('--mark'); cx.lineWidth = Math.max(1.4, SC * .014);
+        cx.beginPath(); cx.moveTo(PX(run.e.x), PY(run.e.y)); cx.lineTo(PX(m[0]), PY(m[1])); cx.stroke();
+        cx.restore();
+      }
+    });
+  }
+
+  if (showTruth) {                                     // IR 빔
+    for (let i = 0; i < 3; i++) {
+      const h = run.hits[i]; if (!h) continue;
+      cx.save();
+      cx.globalAlpha = .55; cx.strokeStyle = C('--ir');
+      cx.lineWidth = Math.max(1.4, SC * .014);
+      cx.beginPath(); cx.moveTo(PX(run.t.x), PY(run.t.y)); cx.lineTo(PX(h[0]), PY(h[1])); cx.stroke();
+      cx.globalAlpha = 1; cx.fillStyle = C('--ir');
+      cx.beginPath(); cx.arc(PX(h[0]), PY(h[1]), SC * .035, 0, Math.PI * 2); cx.fill();
+      cx.restore();
+    }
+  }
+
+  trail(run.trailE, C('--est'), .4);
+  // 헷갈리는 정도를 원으로 보여 준다. 이 원이 이 게임의 전부다.
+  if (mode !== MODE.AUTO && run.unc > 0.02) {
+    const ux = PX(run.e.x), uy = PY(run.e.y), ur = run.unc * SC;
+    cx.save();
+    const gg = cx.createRadialGradient(ux, uy, 0, ux, uy, ur);
+    gg.addColorStop(0, 'rgba(59,130,246,0)');
+    gg.addColorStop(.72, 'rgba(59,130,246,.07)');
+    gg.addColorStop(1, 'rgba(59,130,246,.20)');
+    cx.fillStyle = gg;
+    cx.beginPath(); cx.arc(ux, uy, ur, 0, Math.PI * 2); cx.fill();
+    cx.setLineDash([SC * .05, SC * .045]);
+    const fixing = mode === MODE.SLAM && run.seen.length > 0;
+    cx.strokeStyle = fixing ? 'rgba(239,166,60,.95)' : 'rgba(99,160,255,.75)';
+    cx.lineWidth = Math.max(1.4, SC * .008);
+    cx.beginPath(); cx.arc(ux, uy, ur, 0, Math.PI * 2); cx.stroke();
+    cx.restore();
+
+    if (!run.done) {
+      cx.font = `600 ${Math.round(SC * .105)}px ${C('--sans')}`;
+      cx.textAlign = 'center';
+      const fixing2 = mode === MODE.SLAM && run.seen.length > 0;
+      cx.fillStyle = fixing2 ? 'rgba(239,166,60,.98)' : 'rgba(147,190,255,.95)';
+      cx.fillText((fixing2 ? '표식 보임 · 줄어드는 중 · ±' : '이 안 어딘가 · ±') + run.unc.toFixed(2) + ' m',
+                  ux, uy - ur - SC * .07);
+    }
+  }
+
+  if (mode === MODE.AUTO) chassis(run.t, C('--goal'), true);
+  else chassis(run.e, C('--est'), true);
+}
+
+/* ── 패널 ───────────────────────────────── */
+const $ = id => document.getElementById(id);
+function panel() {
+  if (!run) return;
+  const L = Math.max(-255, Math.min(255, run.pwmL)), Rr = Math.max(-255, Math.min(255, run.pwmR));
+  for (const [bar, val, v] of [[$('pwmL'), $('pwmLv'), L], [$('pwmR'), $('pwmRv'), Rr]]) {
+    const pc = Math.abs(v) / 255 * 50;
+    bar.style.left = (v >= 0 ? 50 : 50 - pc) + '%';
+    bar.style.width = pc + '%';
+    bar.style.background = v >= 0 ? C('--est') : C('--truth');
+    val.textContent = v;
+  }
+  $('vOut').textContent = vmm(run.pwmL, run.pwmR) + ' mm/s';
+  $('wOut').textContent = Math.round(wmd(run.pwmL, run.pwmR) / 1000) + ' °/s';
+
+  const ids = [['irL','irLv'],['irF','irFv'],['irR','irRv']];
+  for (let i = 0; i < 3; i++) {
+    const mm = run.mm[i];
+    $(ids[i][0]).style.width = Math.min(100, mm / 2000 * 100) + '%';
+    $(ids[i][1]).textContent = mm >= 4000 ? '∞' : mm + ' mm';
+  }
+
+  $('unc').textContent = '±' + run.unc.toFixed(2) + ' m';
+  $('unc').style.color = C(run.unc > 0.6 ? '--truth' : run.unc > 0.3 ? '--mark' : '--fg');
+  $('dist').textContent = run.dist.toFixed(2) + ' m';
+  $('clock').textContent = run.time.toFixed(1) + ' s';
+  $('ticks').textContent = run.ticks + ' · ' + run.stalls;
+
+  const s = run.state | 0;
+  $('badgeName').textContent = ST[s] || '—';
+  $('badgeDot').style.background = C(ST_COLOR[s] || '--faint');
+  $('badgeSub').textContent = mode === MODE.AUTO ? 'fw_i_state = ' + s : '사람 조종';
+  $('modeName').textContent = mode === MODE.AUTO ? '펌웨어 자율' : (mode === MODE.SLAM ? '사람 · SLAM 보정' : '사람 · 보정 없음');
+}
+
+/* ── 기록 ───────────────────────────────── */
+const KEY = 'parking-scores-v3';
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } };
+const save = l => { try { localStorage.setItem(KEY, JSON.stringify(l.slice(0, 20))); } catch (e) {} };
+function addScore(name, err) {
+  const list = load();
+  const row = { name: (name || '익명').slice(0, 8), err: +err.toFixed(2), at: Date.now() };
+  list.push(row); list.sort((a, b) => a.err - b.err); save(list);
+  myLast = row; renderBoard();
+  return list.findIndex(r => r === row);
+}
+function renderBoard() {
+  const list = load().slice(0, 5), ol = $('board');
+  $('boardEmpty').hidden = list.length > 0;
+  ol.innerHTML = '';
+  list.forEach((r, i) => {
+    const li = document.createElement('li');
+    if (myLast && r.at === myLast.at) li.className = 'me';
+    li.innerHTML = '<span class="r"></span><span class="n"></span><span class="e"></span>';
+    li.querySelector('.r').textContent = i + 1;
+    li.querySelector('.n').textContent = r.name;
+    li.querySelector('.e').textContent = r.err.toFixed(2) + ' m';
+    ol.appendChild(li);
+  });
+}
+
+/* ── 화면 ───────────────────────────────── */
+const ov = $('overlay');
+function showTitle() {
+  phase = PHASE.TITLE; mode = MODE.AUTO;
+  run = newRun();
+  if (FW) FW.fw_i_setup(SLOT_AUTO);
+  ov.hidden = false; ov.classList.add('attract'); ov.classList.remove('result');
+  $('hud').hidden = true; $('replayTag').hidden = true; hideTip();
+  $('oEyebrow').hidden = false;
+  $('oEyebrow').textContent = FW ? 'firmware.c · wasm32 · 4.3 KB · live' : 'firmware.c · wasm load failed · js fallback';
+  $('oTitle').textContent = '눈 감고 주차하기';
+  $('oSub').innerHTML = '눈 감고 걸어서 주차 칸에 서 보는 게임입니다. 로봇도 밖을 안 보면 똑같이 됩니다.<br><span style="color:var(--faint)">지금 혼자 도는 로봇은 MCU용 C 펌웨어가 몰고 있습니다.</span>';
+  $('oRules').hidden = false;
+  $('errBox').hidden = true; $('verdict').hidden = true;
+  $('oButtons').innerHTML = '';
+  $('oHint').hidden = false;
+  $('boardTitle').textContent = '기록 · 보정 없음';
+}
+
+function startPlay(useSlam) {
+  mode = useSlam ? MODE.SLAM : MODE.ODO;
+  run = newRun();
+  if (FW) FW.fw_i_setup(SLOT_HUMAN);
+  phase = PHASE.PLAY;
+  myLast = null; renderBoard();
+  ov.hidden = true; ov.classList.remove('attract', 'result');
+  $('hud').hidden = false; $('replayTag').hidden = true; hideTip();
+  lastInput = performance.now();
+  $('boardTitle').textContent = useSlam ? '기록 · SLAM 보정' : '기록 · 보정 없음';
+}
+
+function finish() {
+  if (phase !== PHASE.PLAY) return;
+  run.done = true; phase = PHASE.RESULT; resultAt = performance.now();
+  for (const k in keys) keys[k] = false;
+
+  const err = Math.hypot(run.e.x - run.t.x, run.e.y - run.t.y);
+  const parked = inGoal(run.t.x, run.t.y), thought = inGoal(run.e.x, run.e.y);
+
+  ov.hidden = false; ov.classList.remove('attract'); ov.classList.add('result');
+  $('hud').hidden = true; hideTip();
+  $('oEyebrow').hidden = true;
+  $('replayTag').hidden = false;
+  run.rep = 0; run.repHold = 0;
+  $('oRules').hidden = true; $('oHint').hidden = true;
+  $('errBox').hidden = false; $('verdict').hidden = false;
+  $('errNum').textContent = err.toFixed(2);
+  $('oButtons').innerHTML = '';
+
+  // 주차 칸에 도착했다고 믿을 때만 기록으로 친다.
+  // 출발하자마자 스페이스바를 눌러 오차 0 을 만드는 수를 막는다.
+  if (!thought) {
+    $('oTitle').textContent = '아직 주차 칸이 아닙니다';
+    $('oSub').textContent = '주차 칸이라고 믿는 자리까지 몰고 가서 스페이스바를 눌러야 기록이 남습니다.';
+    $('verdict').textContent = run.dist.toFixed(2) + ' m 달렸고 기록은 남지 않았습니다';
+    $('verdict').style.color = C('--dim');
+  } else {
+    const bay = GOAL.x1 - GOAL.x0;                      // 주차 칸 폭 = 눈대중 기준
+    const times = (err / bay).toFixed(1);
+    $('oTitle').textContent = mode === MODE.SLAM ? '밖을 보면서 달렸을 때' : '파란 원은 거짓말이었습니다';
+    $('oSub').innerHTML = mode === MODE.SLAM
+      ? '랜드마크가 보일 때마다 원이 다시 작아졌습니다. 그래서 끝까지 안 헤맵니다.'
+      : '로봇은 <b style="color:var(--est)">파란 쪽</b>에 있다고 믿었고, 실제로는 <b style="color:var(--truth)">빨간 쪽</b>에 있었습니다.';
+    $('verdict').innerHTML = parked
+      ? '주차 성공'
+      : '주차 칸 폭의 <b>' + times + '배</b>만큼 벗어났습니다';
+    $('verdict').style.color = C(parked ? '--goal' : '--truth');
+
+    const rank = addScore(pendingName, err);
+    if (rank < 5) {
+      const row = document.createElement('div'); row.className = 'btnrow';
+      const inp = document.createElement('input');
+      inp.id = 'nameIn'; inp.maxLength = 8; inp.value = pendingName;
+      inp.placeholder = (rank + 1) + '위 · 이름을 남기세요';
+      inp.oninput = () => {
+        pendingName = inp.value;
+        const l = load(), m = myLast && l.find(r => r.at === myLast.at);
+        if (m) { m.name = inp.value.slice(0, 8) || '익명'; save(l); renderBoard(); }
+      };
+      row.appendChild(inp); $('oButtons').appendChild(row);
+    }
+  }
+
+  const row = document.createElement('div'); row.className = 'btnrow';
+  if (mode !== MODE.SLAM) {
+    const b = document.createElement('button');
+    b.className = 'primary'; b.textContent = 'SLAM 켜고 다시 →';
+    b.onclick = () => startPlay(true);
+    row.appendChild(b);
+  }
+  const again = document.createElement('button');
+  again.textContent = '한 번 더';
+  again.onclick = () => startPlay(false);
+  row.appendChild(again);
+  const home = document.createElement('button');
+  home.textContent = '펌웨어 보기';
+  home.onclick = showTitle;
+  row.appendChild(home);
+  $('oButtons').appendChild(row);
+}
+
+/* ── 입력 ───────────────────────────────── */
+const DRIVE = { ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1 };
+window.addEventListener('keydown', e => {
+  if (e.target instanceof HTMLInputElement) return;
+  lastInput = performance.now();
+  if (DRIVE[e.key] || e.key === ' ') e.preventDefault();
+  if (phase === PHASE.TITLE) { startPlay(false); return; }
+  if (phase === PHASE.RESULT) { if (e.key === ' ' || e.key === 'Enter') startPlay(false); return; }
+  if (DRIVE[e.key]) keys[e.key] = true;
+  if (e.key === ' ') finish();
+  if (e.key === 'Escape') showTitle();
+});
+window.addEventListener('keyup', e => { if (DRIVE[e.key]) keys[e.key] = false; });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+const touch = $('touch');
+touch.addEventListener('pointerdown', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  e.preventDefault(); lastInput = performance.now();
+  if (phase === PHASE.TITLE) { startPlay(false); return; }
+  if (phase === PHASE.RESULT) { startPlay(false); return; }
+  if (b.dataset.k === ' ') finish(); else keys[b.dataset.k] = true;
+});
+const release = () => { for (const k in keys) keys[k] = false; };
+touch.addEventListener('pointerup', release);
+touch.addEventListener('pointercancel', release);
+touch.addEventListener('pointerleave', release);
+
+/* ── 루프 ───────────────────────────────── */
+let prev = performance.now(), lastFrame = performance.now();
+
+function loop(now) { frame(now); requestAnimationFrame(loop); }
+
+/* 창이 가려지거나 백그라운드로 가면 requestAnimationFrame 이 아예 안 불린다.
+   부스에서 화면이 얼어붙으면 끝이라 타이머로 한 번 더 받쳐 둔다. */
+setInterval(() => {
+  const n = performance.now();
+  if (n - lastFrame > 200) frame(n);
+}, 60);
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - prev) / 1000);
+  prev = now; lastFrame = now;
+
+  if (run) {
+    run.acc += dt * 1000;
+    let guard = 0;
+    while (run.acc >= TICK_MS && guard++ < 5) { run.acc -= TICK_MS; tick(run); }
+    if (phase !== PHASE.RESULT) move(run, dt);
+
+    if (phase === PHASE.PLAY && now - lastInput > IDLE_MS) showTitle();
+    if (phase === PHASE.RESULT) {
+      const n = run.trailT.length;
+      if (run.rep < n - 1) {
+        run.rep = Math.min(n - 1, run.rep + REPLAY_RATE * dt);
+      } else {
+        run.repHold += dt;
+        if (run.repHold > REPLAY_HOLD) { run.rep = 0; run.repHold = 0; }   // 계속 반복
+      }
+      if (now - resultAt > RESULT_MS) showTitle();
+    }
+    if (phase === PHASE.TITLE && (run.arrived || run.time > 45)) {
+      run = newRun();
+      if (FW) FW.fw_i_setup(SLOT_AUTO);
+    }
+  }
+
+  // 부스에서 한 프레임 터졌다고 화면이 멈추면 안 된다. 그려지는 쪽 예외는 삼킨다.
+  pumpTips(now);
+  try { panel(); draw(); } catch (e) { if (!frame.warned) { frame.warned = 1; console.error(e); } }
+}
+
+/* ── 시작 ───────────────────────────────── */
+async function boot(saved) {
+  CSS = getComputedStyle(document.documentElement);
+  if (saved && saved.name) pendingName = saved.name;
+  fit();
+  renderBoard();
+  await loadFirmware();
+  showTitle();
+  requestAnimationFrame(loop);
+}
+window.addEventListener('resize', fit);
+window.claude?.hot?.snapshot?.(() => ({ name: pendingName }));
+if (window.claude?.hot?.ready) window.claude.hot.ready(boot);
+else boot(window.claude?.hot?.data ?? {});
+</script>

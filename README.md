@@ -160,9 +160,9 @@ ROS 2와 Simulation 환경에서 직접 구현합니다.
 | **W03** | 2026.10.21 | Robotics 기초 | Kinematics, 로봇이 움직이는 원리 | 차동 구동 로봇이 회전·직진하는 이유 설명 + 간단 실험 |
 | **W04** | 2026.10.28 | ROS 2 / Simulation | ROS 2 입문 (node, topic, service, launch) | 토픽으로 `Hello Robot` 주고받기 |
 | **W05** | 2026.11.04 | ROS 2 / Simulation | Simulation 환경 구축 | 시뮬레이터에 로봇을 스폰하고 텔레옵으로 움직이기 |
-| **W06** | 2026.11.11 | ROS 2 / Simulation | 센서 다루기 (LiDAR, Camera, IMU) | 센서 데이터를 시각화하고 한 줄로 해석하기 |
-| **W07** | 2026.11.18 | Autonomous Robot | 반응형 제어 | 벽 따라가기 또는 장애물 앞에서 멈추기 |
-| **W08** | 2026.11.25 | Autonomous Robot | SLAM | 시뮬레이션 맵 한 장 만들기 |
+| **W06** | 2026.11.11 | ROS 2 / Simulation | 센서 다루기 + 반응형 제어 | 센서값만 보고 장애물 피하기 (충돌 61회 → 0회) |
+| **W07** | 2026.11.18 | Autonomous Robot | SLAM | LiDAR로 격자 지도 만들기 + EKF-SLAM 경로 비교 |
+| **W08** | 2026.11.25 | Autonomous Robot | Localization | 저장된 지도 위에서 현재 위치 추정하기 (Particle Filter) |
 | **W09** | 2026.12.02 | Autonomous Robot | Navigation | 목표 지점까지 자율 주행시키기 |
 | **W10** | 2026.12.09 | AI × Robotics | Computer Vision for Robots | 카메라로 물체 인식하기 |
 | **W11** | 2026.12.16 | AI × Robotics | Perception + Action | 인식한 대상을 향해 가거나 피하기 |
@@ -214,7 +214,7 @@ ROS 2와 Simulation 환경에서 직접 구현합니다.
 | W05 | `TBA` | `TBA` | `TBA` |
 | W06 | [Sensor + Control](w6/W6-sensor-control.md) | [`w6/`](w6/) · [`w6-embedded/`](w6-embedded/) · [`w6-firmware-c/`](w6-firmware-c/) | [스터디 로그](studylog/) |
 | W07 | [SLAM](studylog-w7/) | [`w7/`](w7/) | [스터디 로그](studylog-w7/) |
-| W08 | `TBA` | `TBA` | `TBA` |
+| W08 | Localization | [`w8/`](w8/) | 파티클 필터 · 납치된 로봇 |
 | W09 | `TBA` | `TBA` | `TBA` |
 | W10 | `TBA` | `TBA` | `TBA` |
 | W11 | `TBA` | `TBA` | `TBA` |
@@ -231,6 +231,7 @@ ROS 2와 Simulation 환경에서 직접 구현합니다.
 ├── w6-embedded/        같은 제어기를 MCU 시뮬레이터 위에 올린 것
 ├── w6-firmware-c/      C 펌웨어 (dylib · wasm · 보드용, 한 파일에서 세 갈래)
 ├── w7/                 W7 SLAM — LiDAR 격자 지도, EKF-SLAM, 다중 지점 매핑
+├── w8/                 W8 Localization — 파티클 필터, 전역 위치 추정, 납치된 로봇
 ├── studylog/           W6 스터디 로그 (HTML)
 └── studylog-w7/        W7 스터디 로그 (HTML)
 ```
@@ -252,6 +253,10 @@ python run.py --controller improved --duration 40
 # W7 — 같은 주행에서 바퀴만 쓰면 5.54 m, 관측을 더하면 0.70 m 틀어집니다
 cd ../w7 && python ekf_run.py
 python temi_map.py        # 돌아다니며 지도를 쌓을 때와 위치가 틀어졌을 때
+
+# W8 — 파티클 100개면 RMSE 0.165 m, 20개면 20번 중 6번 실패합니다
+cd ../w8 && PR_PATH=../PythonRobotics python3 pf_run.py
+PR_PATH=../PythonRobotics python3 fig_pf.py
 
 # 부스 게임 — 서버도 인터넷도 필요 없습니다
 open ../booth/index.html
